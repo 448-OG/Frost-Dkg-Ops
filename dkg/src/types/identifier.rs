@@ -1,9 +1,17 @@
 use bitcode::{Decode, Encode};
 use email_address::{EmailAddress, Options as EmailOptions};
-use frost_core::{Ciphersuite, Identifier};
+use frost_core::{
+    Ciphersuite, Identifier,
+    keys::{SigningShare, VerifiableSecretSharingCommitment},
+};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{FrostOpsError, FrostOpsResult, RandomBytes};
+
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
+)]
+pub struct Blake3HashBytes([u8; 32]);
 
 #[cfg(feature = "ed25519")]
 pub type FrostCredentialEd25519 = FrostCredential<frost_ed25519::Ed25519Sha512>;
@@ -82,7 +90,7 @@ impl<C: Ciphersuite + Clone + Copy> FrostCredential<C> {
     pub fn encode(&self) -> Vec<u8> {
         bitcode::encode(&FrostCredentialEncoded {
             credential_type: self.credential_type,
-            frost_identifier: self.frost_identifier.serialize(),
+            frost_identifier: FrostIdentifierBytes::encode(&self.frost_identifier),
             ciphersuite: C::ID.to_string(),
             seed: self.seed.clone(),
         })
@@ -92,7 +100,7 @@ impl<C: Ciphersuite + Clone + Copy> FrostCredential<C> {
         let decoded = bitcode::decode::<FrostCredentialEncoded>(encoded)
             .or(Err(FrostOpsError::UnableToDecodeFrostCredential))?;
 
-        let frost_identifier = Identifier::<C>::deserialize(&decoded.frost_identifier)?;
+        let frost_identifier = FrostIdentifierBytes::decode(&decoded.frost_identifier)?;
 
         Ok(Self {
             credential_type: decoded.credential_type,
@@ -107,7 +115,7 @@ impl<C: Ciphersuite + Clone + Copy> FrostCredential<C> {
 )]
 pub struct FrostCredentialEncoded {
     credential_type: FrostCredentialType,
-    frost_identifier: Vec<u8>,
+    frost_identifier: FrostIdentifierBytes,
     ciphersuite: String,
     seed: Vec<u8>,
 }
@@ -148,6 +156,98 @@ impl From<u8> for FrostCredentialType {
         }
     }
 }
+
+#[derive(
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Clone,
+    Encode,
+    Decode,
+    Hash,
+    Zeroize,
+    ZeroizeOnDrop,
+)]
+pub struct FrostIdentifierBytes(Vec<u8>);
+
+impl FrostIdentifierBytes {
+    pub fn encode<C: Ciphersuite>(identifier: &Identifier<C>) -> Self {
+        Self(identifier.serialize())
+    }
+
+    pub fn decode<C: Ciphersuite>(&self) -> FrostOpsResult<Identifier<C>> {
+        Ok(Identifier::<C>::deserialize(&self.0)?)
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash)]
+pub struct FrostSigningShareBytes(Vec<u8>);
+
+impl FrostSigningShareBytes {
+    pub fn encode<C: Ciphersuite>(signing_share: &SigningShare<C>) -> Self {
+        Self(signing_share.serialize())
+    }
+
+    pub fn decode<C: Ciphersuite>(&self) -> FrostOpsResult<SigningShare<C>> {
+        Ok(SigningShare::<C>::deserialize(&self.0)?)
+    }
+}
+
+#[cfg(feature = "ed25519")]
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash)]
+pub struct FrostScalarBytes([u8; 32]);
+
+#[cfg(feature = "ed25519")]
+impl FrostScalarBytes {
+    pub fn encode(scalar: curve25519_dalek::Scalar) -> Self {
+        Self(scalar.to_bytes())
+    }
+
+    pub fn decode(scalar_array: Self) -> curve25519_dalek::Scalar {
+        curve25519_dalek::Scalar::from_bytes_mod_order(scalar_array.0)
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash)]
+pub struct FrostCommitmentBytes(pub(crate) Vec<Vec<u8>>);
+
+impl FrostCommitmentBytes {
+    pub fn encode<C: Ciphersuite>(
+        commitments: &VerifiableSecretSharingCommitment<C>,
+    ) -> FrostOpsResult<Self> {
+        Ok(Self(commitments.serialize()?))
+    }
+
+    pub fn decode<C: Ciphersuite>(
+        commitments_bytes: Self,
+    ) -> FrostOpsResult<VerifiableSecretSharingCommitment<C>> {
+        Ok(VerifiableSecretSharingCommitment::<C>::deserialize(
+            commitments_bytes.0,
+        )?)
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash)]
+pub struct ProofOfKnowledgeBytes(pub(crate) Vec<u8>);
+
+impl ProofOfKnowledgeBytes {
+    pub fn encode<C: Ciphersuite>(proof: &frost_core::Signature<C>) -> FrostOpsResult<Self> {
+        Ok(Self(proof.serialize()?))
+    }
+
+    pub fn decode<C: Ciphersuite>(proof: &[u8]) -> FrostOpsResult<frost_core::Signature<C>> {
+        Ok(frost_core::Signature::<C>::deserialize(proof)?)
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash)]
+pub struct MinimumSigners(u16);
+
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash)]
+pub struct MaximumSigners(u16);
 
 #[cfg(test)]
 mod sanity_checks {
