@@ -151,6 +151,7 @@ impl From<u8> for FrostCredentialType {
 
 #[cfg(test)]
 mod sanity_checks {
+    #[cfg(feature = "ed25519")]
     use crate::FrostCredentialEd25519;
 
     #[test]
