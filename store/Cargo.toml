@@ -1,0 +1,20 @@
+[package]
+name = "frost-store-ops"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+description.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[features]
+relay = ["dep:fjall"]
+participants = ["dep:redb"]
+
+[dependencies]
+fjall = { workspace = true, optional = true }
+redb = { workspace = true, optional = true }
