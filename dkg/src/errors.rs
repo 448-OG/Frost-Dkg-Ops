@@ -99,6 +99,10 @@ pub enum FrostOpsError {
     DeserializationError,
     #[error("`non_exhaustive` was triggered. This is a critical bug!")]
     UnknownFrostError,
+    #[error("Unable to Serialize Round 1 DKG Secret Package")]
+    UnableToSerializedRound1DkgSecret,
+    #[error("Unable to Deserialize Round 1 DKG Secret Package")]
+    UnableToDeserializedRound1DkgSecret,
 }
 
 impl<C: frost_core::Ciphersuite> From<frost_core::Error<C>> for FrostOpsError {

@@ -17,7 +17,7 @@ keywords = []
 [workspace.dependencies]
 tai64 = "=4.1.0"
 thiserror = { version = "=2.0.18", default-features = false }
-bitcode = "=0.6.7"
+bitcode = { version = "=0.6.7", features = ["serde"] }
 async-dup = "=1.2.4"
 async-lock = "=3.4.2"
 async-channel = "=2.5.0"
