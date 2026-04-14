@@ -1,66 +1,96 @@
 use bitcode::{Decode, Encode};
-use email_address::{EmailAddress, Options as EmailOptions};
 use frost_core::{
     Ciphersuite, Identifier,
     keys::{SigningShare, VerifiableSecretSharingCommitment},
 };
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{FrostOpsError, FrostOpsResult, RandomBytes};
-
-#[cfg(feature = "ed25519")]
-pub type FrostCredentialEd25519 = FrostCredential<frost_ed25519::Ed25519Sha512>;
+use crate::{FrostCredentialSeed, FrostCredentialType, FrostOpsResult, FrostProtocolError};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct FrostCredential<C: Ciphersuite + Clone + Copy> {
-    credential_type: FrostCredentialType,
     frost_identifier: Identifier<C>,
-    seed: Vec<u8>,
+    seed: FrostCredentialSeed,
 }
 
 impl<C: Ciphersuite + Clone + Copy> FrostCredential<C> {
     pub fn new_anonymous() -> FrostOpsResult<Self> {
-        let bytes = RandomBytes::<32>::generate();
-        let mut seed = faster_hex::hex_string_upper(bytes.expose().as_slice());
+        let frost_credential_seed = FrostCredentialSeed::new_anonymous()?;
 
-        let frost_identifier = Self::credential_type_to_identifier(&seed)?;
-
-        let seed_bytes = seed.as_bytes().to_vec();
-        seed.zeroize();
+        let frost_identifier =
+            Self::credential_type_to_identifier(frost_credential_seed.as_bytes())?;
 
         Ok(Self {
-            credential_type: FrostCredentialType::Anonymous,
             frost_identifier,
-            seed: seed_bytes,
+            seed: frost_credential_seed,
         })
     }
 
+    #[cfg(feature = "email")]
     pub fn new_with_email(email_address: &str) -> FrostOpsResult<Self> {
-        let email_address = email_address.trim();
+        let frost_credential_seed = FrostCredentialSeed::new_with_email(email_address)?;
 
-        let options = EmailOptions::default().with_required_tld();
-        EmailAddress::parse_with_options(email_address, options)
-            .or(Err(FrostOpsError::InvalidEmailAddress))?;
-
-        let frost_identifier = Self::credential_type_to_identifier(email_address)?;
+        let frost_identifier =
+            Self::credential_type_to_identifier(frost_credential_seed.as_bytes())?;
 
         Ok(Self {
-            credential_type: FrostCredentialType::Email,
             frost_identifier,
-            seed: email_address.as_bytes().to_vec(),
+            seed: frost_credential_seed,
+        })
+    }
+
+    /// Enforces that the email domain is part of the same organization
+    #[cfg(feature = "email")]
+    pub fn new_with_email_strict(username: &str, sld_tld: &str) -> FrostOpsResult<Self> {
+        let frost_credential_seed = FrostCredentialSeed::new_with_email_strict(username, sld_tld)?;
+
+        let frost_identifier =
+            Self::credential_type_to_identifier(frost_credential_seed.as_bytes())?;
+
+        Ok(Self {
+            frost_identifier,
+            seed: frost_credential_seed,
         })
     }
 
     /// Can be a username or even a phone number (as long as the phone number is a String)
-    pub fn new_username(username: &str) -> FrostOpsResult<Self> {
-        let username = username.trim();
+    pub fn new_with_username(username: &str) -> FrostOpsResult<Self> {
+        let frost_credential_seed = FrostCredentialSeed::new_with_username(username)?;
 
-        let frost_identifier = Self::credential_type_to_identifier(username)?;
+        let frost_identifier =
+            Self::credential_type_to_identifier(frost_credential_seed.as_bytes())?;
 
         Ok(Self {
-            credential_type: FrostCredentialType::Username,
             frost_identifier,
-            seed: username.as_bytes().to_vec(),
+            seed: frost_credential_seed,
+        })
+    }
+
+    pub fn encode(&self) -> FrostCredentialBytes {
+        FrostCredentialBytes {
+            frost_identifier: FrostIdentifierBytes::encode(&self.frost_identifier),
+            ciphersuite: C::ID.to_string(),
+            seed: self.seed.clone(),
+        }
+    }
+
+    pub fn encode_to_bytes(&self) -> Vec<u8> {
+        bitcode::encode(&FrostCredentialBytes {
+            frost_identifier: FrostIdentifierBytes::encode(&self.frost_identifier),
+            ciphersuite: C::ID.to_string(),
+            seed: self.seed.clone(),
+        })
+    }
+
+    pub fn decode(encoded: &[u8]) -> FrostOpsResult<Self> {
+        let decoded = bitcode::decode::<FrostCredentialBytes>(encoded)
+            .or(Err(FrostProtocolError::UnableToDecodeFrostCredential))?;
+
+        let frost_identifier = FrostIdentifierBytes::decode(&decoded.frost_identifier)?;
+
+        Ok(Self {
+            frost_identifier,
+            seed: decoded.seed.clone(),
         })
     }
 
@@ -69,87 +99,25 @@ impl<C: Ciphersuite + Clone + Copy> FrostCredential<C> {
     }
 
     pub fn credential_type(&self) -> FrostCredentialType {
-        self.credential_type
+        self.seed().credential_type()
     }
 
     pub fn frost_identifier(&self) -> Identifier<C> {
         self.frost_identifier
     }
 
-    pub fn seed(&self) -> String {
-        core::str::from_utf8(&self.seed)
-            .map(|value| value.to_string())
-            .unwrap_or_default()
-    }
-
-    pub fn encode(&self) -> Vec<u8> {
-        bitcode::encode(&FrostCredentialEncoded {
-            credential_type: self.credential_type,
-            frost_identifier: FrostIdentifierBytes::encode(&self.frost_identifier),
-            ciphersuite: C::ID.to_string(),
-            seed: self.seed.clone(),
-        })
-    }
-
-    pub fn decode(encoded: &[u8]) -> FrostOpsResult<Self> {
-        let decoded = bitcode::decode::<FrostCredentialEncoded>(encoded)
-            .or(Err(FrostOpsError::UnableToDecodeFrostCredential))?;
-
-        let frost_identifier = FrostIdentifierBytes::decode(&decoded.frost_identifier)?;
-
-        Ok(Self {
-            credential_type: decoded.credential_type,
-            frost_identifier,
-            seed: decoded.seed.clone(),
-        })
+    pub fn seed(&self) -> &FrostCredentialSeed {
+        &self.seed
     }
 }
 
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
 )]
-pub struct FrostCredentialEncoded {
-    credential_type: FrostCredentialType,
+pub struct FrostCredentialBytes {
     frost_identifier: FrostIdentifierBytes,
     ciphersuite: String,
-    seed: Vec<u8>,
-}
-
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Encode, Decode)]
-pub enum FrostCredentialType {
-    Anonymous,
-    Email,
-    Username,
-    #[default]
-    Uninitialized,
-}
-
-impl Zeroize for FrostCredentialType {
-    fn zeroize(&mut self) {
-        *self = Self::Uninitialized
-    }
-}
-
-impl From<FrostCredentialType> for u8 {
-    fn from(identifier_type: FrostCredentialType) -> Self {
-        match identifier_type {
-            FrostCredentialType::Anonymous => 0,
-            FrostCredentialType::Email => 1,
-            FrostCredentialType::Username => 2,
-            FrostCredentialType::Uninitialized => FrostCredentialType::default().into(),
-        }
-    }
-}
-
-impl From<u8> for FrostCredentialType {
-    fn from(identifier_byte: u8) -> Self {
-        match identifier_byte {
-            0 => Self::Anonymous,
-            1 => Self::Email,
-            2 => Self::Username,
-            _ => Self::Uninitialized,
-        }
-    }
+    seed: FrostCredentialSeed,
 }
 
 #[derive(
@@ -188,21 +156,6 @@ impl FrostSigningShareBytes {
 
     pub fn decode<C: Ciphersuite>(&self) -> FrostOpsResult<SigningShare<C>> {
         Ok(SigningShare::<C>::deserialize(&self.0)?)
-    }
-}
-
-#[cfg(feature = "ed25519")]
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash)]
-pub struct FrostScalarBytes([u8; 32]);
-
-#[cfg(feature = "ed25519")]
-impl FrostScalarBytes {
-    pub fn encode(scalar: curve25519_dalek::Scalar) -> Self {
-        Self(scalar.to_bytes())
-    }
-
-    pub fn decode(scalar_array: Self) -> curve25519_dalek::Scalar {
-        curve25519_dalek::Scalar::from_bytes_mod_order(scalar_array.0)
     }
 }
 
@@ -246,18 +199,34 @@ pub struct MaximumSigners(u16);
 
 #[cfg(test)]
 mod sanity_checks {
-    #[cfg(feature = "ed25519")]
-    use crate::FrostCredentialEd25519;
+    use crate::FrostCredential;
+    use crate::FrostCredentialSeed;
+    use crate::FrostOpsError;
+
+    type FrostCredentialEd25519 = FrostCredential<frost_ed25519::Ed25519Sha512>;
 
     #[test]
-    #[cfg(feature = "ed25519")]
+    fn invalid_seed() {
+        use crate::FrostCredentialSeed;
+
+        let anonymous = FrostCredentialSeed::new_with_username("ff");
+        assert_eq!(
+            Some(FrostOpsError::InvalidFrostCredentialSeed),
+            anonymous.err()
+        );
+
+        let anonymous = FrostCredentialSeed::new_with_username("fff");
+        assert_eq!(None, anonymous.err());
+    }
+
+    #[test]
     fn ed25519_anonymous_identifier_creation() {
         use crate::FrostCredentialType;
 
         let anonymous = FrostCredentialEd25519::new_anonymous().unwrap();
         assert_eq!(anonymous.credential_type(), FrostCredentialType::Anonymous);
-        assert!(!anonymous.seed().is_empty());
-        let encoded = anonymous.encode();
+        assert!(!anonymous.seed().as_bytes().is_empty());
+        let encoded = anonymous.encode_to_bytes();
         let decoded = FrostCredentialEd25519::decode(&encoded).unwrap();
 
         assert_eq!(anonymous.credential_type(), decoded.credential_type());
@@ -265,7 +234,6 @@ mod sanity_checks {
     }
 
     #[test]
-    #[cfg(feature = "ed25519")]
     fn ed25519_email_identifier_creation() {
         use crate::FrostCredentialType;
 
@@ -273,8 +241,11 @@ mod sanity_checks {
 
         let email_cred = FrostCredentialEd25519::new_with_email(email_address).unwrap();
         assert_eq!(email_cred.credential_type(), FrostCredentialType::Email);
-        assert_eq!(email_cred.seed(), email_address);
-        let encoded = email_cred.encode();
+        assert_eq!(
+            email_cred.seed(),
+            &FrostCredentialSeed::new_with_email(email_address).unwrap()
+        );
+        let encoded = email_cred.encode_to_bytes();
         let decoded = FrostCredentialEd25519::decode(&encoded).unwrap();
 
         assert_eq!(email_cred.credential_type(), decoded.credential_type());
@@ -285,19 +256,21 @@ mod sanity_checks {
     }
 
     #[test]
-    #[cfg(feature = "ed25519")]
     fn ed25519_username_identifier_creation() {
         use crate::FrostCredentialType;
 
         let phone_number = "+00-imaginary-number";
 
-        let phone_number_cred = FrostCredentialEd25519::new_username(phone_number).unwrap();
+        let phone_number_cred = FrostCredentialEd25519::new_with_username(phone_number).unwrap();
         assert_eq!(
             phone_number_cred.credential_type(),
             FrostCredentialType::Username
         );
-        assert_eq!(phone_number_cred.seed(), phone_number);
-        let encoded = phone_number_cred.encode();
+        assert_eq!(
+            phone_number_cred.seed(),
+            &FrostCredentialSeed::new_with_username(phone_number).unwrap()
+        );
+        let encoded = phone_number_cred.encode_to_bytes();
         let decoded = FrostCredentialEd25519::decode(&encoded).unwrap();
 
         assert_eq!(

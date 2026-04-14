@@ -5,25 +5,7 @@ use frost_core::{
 };
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{FrostCommitmentBytes, FrostOpsError, FrostOpsResult, ProofOfKnowledgeBytes};
-
-#[derive(
-    Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, ZeroizeOnDrop,
-)]
-pub enum FrostDkgState {
-    #[default]
-    Uninitialized,
-    Round1Data {
-        secret: Round1SecretBytes,
-        public: Round1PackageBytes,
-    },
-}
-
-impl Zeroize for FrostDkgState {
-    fn zeroize(&mut self) {
-        *self = Self::default()
-    }
-}
+use crate::{FrostCommitmentBytes, FrostOpsResult, FrostProtocolError, ProofOfKnowledgeBytes};
 
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash, ZeroizeOnDrop,
@@ -35,12 +17,14 @@ impl Round1SecretBytes {
         round1_secret: &round1::SecretPackage<C>,
     ) -> FrostOpsResult<Self> {
         Ok(Self(bitcode::serialize(&round1_secret).or(Err(
-            FrostOpsError::UnableToSerializedRound1DkgSecret,
+            FrostProtocolError::UnableToSerializedRound1DkgSecret,
         ))?))
     }
 
     pub fn deserialize<C: Ciphersuite>(&self) -> FrostOpsResult<round1::SecretPackage<C>> {
-        bitcode::deserialize(&self.0).or(Err(FrostOpsError::UnableToDeserializedRound1DkgSecret))
+        bitcode::deserialize(&self.0).or(Err(
+            FrostProtocolError::UnableToDeserializedRound1DkgSecret.into(),
+        ))
     }
 }
 
@@ -78,7 +62,6 @@ impl Round1PackageBytes {
 #[cfg(test)]
 mod sanity_checks {
     #[test]
-    #[cfg(feature = "ed25519")]
     fn types_sanity() {
         use frost_ed25519::{self as frost};
 

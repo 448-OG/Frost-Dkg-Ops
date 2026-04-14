@@ -1,7 +1,6 @@
 use bitcode::{Decode, Encode};
 use frost_core::{
     Ciphersuite, Signature, SigningPackage,
-    keys::PublicKeyPackage,
     round1::{SigningCommitments, SigningNonces},
     round2::SignatureShare,
 };
@@ -36,21 +35,6 @@ impl FrostSignatureShareBytes {
 
     pub fn decode<C: Ciphersuite>(&self) -> FrostOpsResult<SignatureShare<C>> {
         Ok(SignatureShare::<C>::deserialize(&self.0)?)
-    }
-}
-
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
-)]
-pub struct FrostPublicKeyPackage(Vec<u8>);
-
-impl FrostPublicKeyPackage {
-    pub fn encode<C: Ciphersuite>(public_package: &PublicKeyPackage<C>) -> FrostOpsResult<Self> {
-        Ok(Self(public_package.serialize()?))
-    }
-
-    pub fn decode<C: Ciphersuite>(&self) -> FrostOpsResult<PublicKeyPackage<C>> {
-        Ok(PublicKeyPackage::<C>::deserialize(&self.0)?)
     }
 }
 
@@ -101,8 +85,9 @@ impl FrostSigningCommitmentsBytes {
 
 #[cfg(test)]
 mod sanity_checks {
+    use crate::FrostMessagePackage;
+
     #[test]
-    #[cfg(feature = "ed25519")]
     fn types_sanity() {
         use std::collections::BTreeMap;
 
@@ -111,8 +96,6 @@ mod sanity_checks {
             keys::dkg::{round1, round2},
             round1::SigningCommitments,
         };
-
-        use crate::FrostMessagePackage;
 
         let rng = rand::rngs::OsRng;
 
@@ -124,8 +107,6 @@ mod sanity_checks {
 
         let party1_identifier = frost_ed25519::Identifier::derive(party1.as_bytes()).unwrap();
         let party2_identifier = frost_ed25519::Identifier::derive(party2.as_bytes()).unwrap();
-        println!("PARTY1 IDENTIFIER: {:?}", &party1_identifier);
-        println!("PARTY2 IDENTIFIER: {:?}", &party2_identifier);
 
         let (party1_round1_secret_package, party1_round1_package) =
             frost::keys::dkg::part1(party1_identifier, max_signers, min_signers, rng).unwrap();

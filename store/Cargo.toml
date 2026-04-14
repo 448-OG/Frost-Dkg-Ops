@@ -12,9 +12,22 @@ categories.workspace = true
 keywords.workspace = true
 
 [features]
+default = ["client"]
 relay = ["dep:fjall"]
-participants = ["dep:redb"]
+client = ["dep:redb"]
 
 [dependencies]
+frost-dkg-types.workspace = true
 fjall = { workspace = true, optional = true }
 redb = { workspace = true, optional = true }
+camino.workspace = true
+blocking.workspace = true
+async-dup.workspace = true
+bitcode.workspace = true
+bitcode.default-features = false
+frost-core.workspace = true
+
+[dev-dependencies]
+frost-ed25519.workspace = true
+rand.workspace = true
+smol.workspace = true

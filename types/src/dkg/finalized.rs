@@ -1,7 +1,7 @@
 use bitcode::{Decode, Encode};
 use frost_core::{
     Ciphersuite, VerifyingKey,
-    keys::{KeyPackage, VerifyingShare},
+    keys::{KeyPackage, PublicKeyPackage, VerifyingShare},
 };
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -77,10 +77,24 @@ impl FrostVerifyingKeyBytes {
     }
 }
 
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
+)]
+pub struct FrostPublicKeyPackage(Vec<u8>);
+
+impl FrostPublicKeyPackage {
+    pub fn encode<C: Ciphersuite>(public_package: &PublicKeyPackage<C>) -> FrostOpsResult<Self> {
+        Ok(Self(public_package.serialize()?))
+    }
+
+    pub fn decode<C: Ciphersuite>(&self) -> FrostOpsResult<PublicKeyPackage<C>> {
+        Ok(PublicKeyPackage::<C>::deserialize(&self.0)?)
+    }
+}
+
 #[cfg(test)]
 mod sanity_checks {
     #[test]
-    #[cfg(feature = "ed25519")]
     fn types_sanity() {
         use std::collections::BTreeMap;
 

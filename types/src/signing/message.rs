@@ -2,7 +2,7 @@ use bitcode::{Decode, Encode};
 use frost_core::Ciphersuite;
 use zeroize::Zeroize;
 
-use crate::{FrostIdentifierBytes, FrostOpsError, FrostOpsResult};
+use crate::{Blake3HashBytes, FrostIdentifierBytes, FrostOpsResult, FrostProtocolError};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize)]
 pub struct FrostMessagePackage {
@@ -17,7 +17,7 @@ pub struct FrostMessagePackage {
 impl FrostMessagePackage {
     pub fn new(message: &str) -> FrostOpsResult<Self> {
         if message.len() > 1024 * 1024 {
-            return Err(FrostOpsError::MessageTooBig);
+            return Err(FrostProtocolError::MessageTooBig.into());
         }
 
         let hash = Blake3HashBytes::new(message);
@@ -31,7 +31,7 @@ impl FrostMessagePackage {
 
     pub fn set_minimum_signers(&mut self, minimum_signers: u16) -> FrostOpsResult<&mut Self> {
         if minimum_signers < 2 {
-            return Err(FrostOpsError::MinimumSignersMustBe2OrMore);
+            return Err(FrostProtocolError::MinimumSignersMustBe2OrMore.into());
         }
 
         self.minimum_signers = minimum_signers;
@@ -41,7 +41,7 @@ impl FrostMessagePackage {
 
     pub fn set_maximum_signers(&mut self, maximum_signers: u16) -> FrostOpsResult<&mut Self> {
         if maximum_signers < self.minimum_signers {
-            return Err(FrostOpsError::MinimumSignersMoreThanMaximumSigners);
+            return Err(FrostProtocolError::MinimumSignersMoreThanMaximumSigners.into());
         }
 
         self.maximum_signers = maximum_signers;
@@ -68,7 +68,7 @@ impl FrostMessagePackage {
     }
 
     pub fn hash(&self) -> [u8; 32] {
-        self.hash.0
+        self.hash.to_bytes()
     }
 
     pub fn to_blake3_hash(&self) -> blake3::Hash {
@@ -117,25 +117,6 @@ impl Default for FrostMessagePackage {
             state: FrostMessageSigningState::default(),
             participants: Vec::default(),
         }
-    }
-}
-
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash, Encode, Decode)]
-pub struct Blake3HashBytes([u8; 32]);
-
-impl Blake3HashBytes {
-    pub fn new(message: impl AsRef<[u8]>) -> Self {
-        Self(*blake3::hash(message.as_ref()).as_bytes())
-    }
-
-    pub fn to_hash(&self) -> blake3::Hash {
-        self.0.into()
-    }
-}
-
-impl Zeroize for Blake3HashBytes {
-    fn zeroize(&mut self) {
-        self.0.fill(0);
     }
 }
 
