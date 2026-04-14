@@ -8,11 +8,6 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{FrostOpsError, FrostOpsResult, RandomBytes};
 
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
-)]
-pub struct Blake3HashBytes([u8; 32]);
-
 #[cfg(feature = "ed25519")]
 pub type FrostCredentialEd25519 = FrostCredential<frost_ed25519::Ed25519Sha512>;
 

@@ -103,6 +103,12 @@ pub enum FrostOpsError {
     UnableToSerializedRound1DkgSecret,
     #[error("Unable to Deserialize Round 1 DKG Secret Package")]
     UnableToDeserializedRound1DkgSecret,
+    #[error("The message is too big. Message limit is 1MiB to optimize for mobile networks")]
+    MessageTooBig,
+    #[error("The minimum signers supported is 2")]
+    MinimumSignersMustBe2OrMore,
+    #[error("The maximum signers must be more or equal to minimum signers")]
+    MinimumSignersMoreThanMaximumSigners,
 }
 
 impl<C: frost_core::Ciphersuite> From<frost_core::Error<C>> for FrostOpsError {

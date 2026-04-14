@@ -8,6 +8,24 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use crate::{FrostCommitmentBytes, FrostOpsError, FrostOpsResult, ProofOfKnowledgeBytes};
 
 #[derive(
+    Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, ZeroizeOnDrop,
+)]
+pub enum FrostDkgState {
+    #[default]
+    Uninitialized,
+    Round1Data {
+        secret: Round1SecretBytes,
+        public: Round1PackageBytes,
+    },
+}
+
+impl Zeroize for FrostDkgState {
+    fn zeroize(&mut self) {
+        *self = Self::default()
+    }
+}
+
+#[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash, ZeroizeOnDrop,
 )]
 pub struct Round1SecretBytes(Vec<u8>);
