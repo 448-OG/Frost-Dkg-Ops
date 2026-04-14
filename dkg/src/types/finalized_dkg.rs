@@ -99,8 +99,6 @@ mod sanity_checks {
 
         let party1_identifier = frost_ed25519::Identifier::derive(party1.as_bytes()).unwrap();
         let party2_identifier = frost_ed25519::Identifier::derive(party2.as_bytes()).unwrap();
-        println!("PARTY1 IDENTIFIER: {:?}", &party1_identifier);
-        println!("PARTY2 IDENTIFIER: {:?}", &party2_identifier);
 
         let (party1_round1_secret_package, party1_round1_package) =
             frost::keys::dkg::part1(party1_identifier, max_signers, min_signers, rng).unwrap();

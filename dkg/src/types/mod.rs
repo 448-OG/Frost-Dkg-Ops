@@ -12,3 +12,6 @@ pub use finalized_dkg::*;
 
 mod signing;
 pub use signing::*;
+
+mod message;
+pub use message::*;
