@@ -1,5 +1,5 @@
 use rand_chacha::{
-    ChaCha12Rng,
+    ChaCha12Rng, ChaCha20Rng,
     rand_core::{RngCore, SeedableRng},
 };
 use subtle::ConstantTimeEq;
@@ -9,6 +9,16 @@ pub struct RandomBytes<const N: usize>(Zeroizing<[u8; N]>);
 
 impl<const N: usize> RandomBytes<N> {
     pub fn generate() -> Self {
+        let mut rng = ChaCha20Rng::from_os_rng();
+
+        let mut buffer = Zeroizing::new([0u8; N]);
+
+        rng.fill_bytes(buffer.as_mut());
+
+        Self(buffer)
+    }
+
+    pub fn generate_chacha_12() -> Self {
         let mut rng = ChaCha12Rng::from_os_rng();
 
         let mut buffer = Zeroizing::new([0u8; N]);

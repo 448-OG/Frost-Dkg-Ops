@@ -4,7 +4,7 @@ use bitcode::{Decode, Encode};
 use frost_core::{Ciphersuite, Identifier, keys::dkg::round2};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{FrostIdentifierBytes, FrostOpsError, FrostOpsResult};
+use crate::{FrostIdentifierBytes, FrostOpsError, FrostOpsResult, FrostProtocolError};
 
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash, ZeroizeOnDrop,
@@ -16,12 +16,14 @@ impl Round2SecretBytes {
         round2_secret: &round2::SecretPackage<C>,
     ) -> FrostOpsResult<Self> {
         Ok(Self(bitcode::serialize(&round2_secret).or(Err(
-            FrostOpsError::UnableToSerializedRound1DkgSecret,
+            FrostProtocolError::UnableToSerializedRound1DkgSecret,
         ))?))
     }
 
     pub fn deserialize<C: Ciphersuite>(&self) -> FrostOpsResult<round2::SecretPackage<C>> {
-        bitcode::deserialize(&self.0).or(Err(FrostOpsError::UnableToDeserializedRound1DkgSecret))
+        bitcode::deserialize(&self.0).or(Err(
+            FrostProtocolError::UnableToDeserializedRound1DkgSecret.into(),
+        ))
     }
 }
 
@@ -66,7 +68,6 @@ impl Round2PackageBytes {
 #[cfg(test)]
 mod sanity_checks {
     #[test]
-    #[cfg(feature = "ed25519")]
     fn types_sanity() {
         use std::collections::BTreeMap;
 
