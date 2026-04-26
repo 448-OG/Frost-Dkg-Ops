@@ -2,7 +2,6 @@ use bitcode::{Decode, Encode};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Encode, Decode)]
 pub enum FrostDkgState {
-    Uninitialized,
     InitCredentials,
     QueryMinMax,
     Round1,
@@ -13,7 +12,6 @@ pub enum FrostDkgState {
 impl FrostDkgState {
     pub fn transition(&self) -> Self {
         match self {
-            Self::Uninitialized => Self::InitCredentials,
             Self::InitCredentials => Self::QueryMinMax,
             Self::QueryMinMax => Self::Round1,
             Self::Round1 => Self::Round2,

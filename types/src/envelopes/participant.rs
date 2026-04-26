@@ -1,10 +1,30 @@
 use bitcode::{Decode, Encode};
 
 use crate::{
-    EphemeralClientDeviceKeypair, EphemeralClientDeviceSignature,
-    EphemeralClientDeviceVerifyingKey, FrostClientError, FrostCredentialSeed, FrostOpsResult,
-    Round1PackageBytes, Tai64NTimestamp, TransmitType,
+    EphemeralClientDeviceHeOutputs, EphemeralClientDeviceKeypair,
+    EphemeralClientDeviceVerifyingKey, FrostCredentialSeed, FrostOpsResult, Tai64NTimestamp,
+    TransmitType,
 };
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Hash)]
+#[repr(u8)]
+pub enum ParticipantOperation {
+    /// Registers a participant locally for Key Agreement
+    /// and automatically adds round1 data
+    DkgRound1 = 0,
+    DkgRound2 = 1,
+    Ignore = 2,
+}
+
+impl From<u8> for ParticipantOperation {
+    fn from(discriminant: u8) -> Self {
+        match discriminant {
+            0 => Self::DkgRound1,
+            1 => Self::DkgRound2,
+            _ => Self::Ignore,
+        }
+    }
+}
 
 // Message meant for the participants in a permissioned network
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Hash)]
@@ -14,62 +34,40 @@ pub struct FrostMessageEnvelope {
     pub organization: String,
     pub sender_seed: FrostCredentialSeed,
     pub recipient_seed: Option<FrostCredentialSeed>,
-    pub payload: FrostEnvelopePayload,
-    pub ecdvk: EphemeralClientDeviceVerifyingKey,
-    pub ecds: EphemeralClientDeviceSignature,
+    pub payload: Vec<u8>,
+    /// In round1 DKG the `payload` is not encrypted since it is a broadcast
+    pub he_outputs: EphemeralClientDeviceHeOutputs,
 }
 
 impl FrostMessageEnvelope {
-    pub fn sign(mut self, ecdk: &EphemeralClientDeviceKeypair) -> FrostOpsResult<Self> {
-        let packed = self.pack_for_signing();
+    pub fn generate_he_outputs(
+        mut self,
+        ecdk: EphemeralClientDeviceKeypair,
+        recipient_ecdvk: EphemeralClientDeviceVerifyingKey,
+    ) -> FrostOpsResult<Self> {
+        let packed = self.pack_for_dh_outputs();
 
-        let (ecdvk, ecds) = ecdk.sign_and_return_encodable_and_verifying_key(packed)?;
+        let outputs = ecdk.generate_he_outputs(packed, &recipient_ecdvk.from_bytes())?;
 
-        self.ecdvk = ecdvk;
-        self.ecds = ecds;
+        self.he_outputs = outputs;
 
         Ok(self)
     }
 
-    pub fn pack_for_signing(&self) -> Vec<u8> {
+    pub fn pack_for_dh_outputs(&self) -> Vec<u8> {
         let mut message = Vec::<u8>::default();
 
-        message.insert(0, self.transmission_type as u8);
         message.extend_from_slice(self.organization.as_bytes());
         message.extend_from_slice(self.sender_seed.as_bytes());
         if let Some(exists) = self.recipient_seed.as_ref() {
             message.extend_from_slice(exists.as_bytes());
         }
-        message.extend_from_slice(&self.payload.encode());
+        message.extend_from_slice(&self.payload);
 
         message
     }
 
-    pub fn verify_ecds(&self) -> FrostOpsResult<bool> {
-        let message = self.pack_for_signing();
-
-        let verifying_key = self.ecdvk.from_bytes()?;
-        let signature = self.ecds.from_bytes();
-
-        Ok(verifying_key
-            .verify_strict(message.as_ref(), &signature)
-            .is_ok())
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Hash)]
-pub enum FrostEnvelopePayload {
-    DkgRound1(Round1PackageBytes),
-    /// These must be encrypted for each recipient
-    DkgRound2Encrypted,
-}
-
-impl FrostEnvelopePayload {
-    pub fn encode(&self) -> Vec<u8> {
-        bitcode::encode(self)
-    }
-
-    pub fn decode(bytes: &[u8]) -> FrostOpsResult<Self> {
-        bitcode::decode::<Self>(bytes).or(Err(FrostClientError::DecodeFrostEnvelopePayload.into()))
+    pub fn decode_he_outputs(self, ecdk: EphemeralClientDeviceKeypair) -> FrostOpsResult<Vec<u8>> {
+        ecdk.decode_he_outputs(self.he_outputs)
     }
 }

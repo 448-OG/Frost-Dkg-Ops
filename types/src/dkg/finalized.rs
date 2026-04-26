@@ -179,7 +179,7 @@ mod sanity_checks {
         {
             // Test round2 outputs
 
-            use crate::{FrostKeyPackageBytes, FrostPublicKeyPackage};
+            use super::{FrostKeyPackageBytes, FrostPublicKeyPackage};
             let key_package_bytes = FrostKeyPackageBytes::encode(&party1_key_package).unwrap();
             let public_package_bytes =
                 FrostPublicKeyPackage::encode(&party1_public_package).unwrap();
