@@ -37,7 +37,7 @@ pub struct Round1PackageBytes {
 }
 
 impl Round1PackageBytes {
-    pub fn encode<C: Ciphersuite>(
+    pub fn parse<C: Ciphersuite>(
         round1_public_package: &round1::Package<C>,
     ) -> FrostOpsResult<Self> {
         let commitment = FrostCommitmentBytes::encode(round1_public_package.commitment())?;
@@ -48,6 +48,10 @@ impl Round1PackageBytes {
             proof_of_knowledge,
             commitment,
         })
+    }
+
+    pub fn encode(&self) -> Vec<u8> {
+        bitcode::encode(self)
     }
 
     pub fn decode<C: Ciphersuite>(&self) -> FrostOpsResult<round1::Package<C>> {
@@ -65,7 +69,7 @@ mod sanity_checks {
     fn types_sanity() {
         use frost_ed25519::{self as frost};
 
-        use crate::Round1SecretBytes;
+        use super::Round1SecretBytes;
 
         let rng = rand::rngs::OsRng;
 
@@ -89,9 +93,9 @@ mod sanity_checks {
 
         // Round 1 Public Package tests
 
-        use crate::Round1PackageBytes;
+        use super::Round1PackageBytes;
         let encoded_round1_public_commitment =
-            Round1PackageBytes::encode::<frost_ed25519::Ed25519Sha512>(&party1_round1_package)
+            Round1PackageBytes::parse::<frost_ed25519::Ed25519Sha512>(&party1_round1_package)
                 .unwrap();
         let decoded_round1_commitment = encoded_round1_public_commitment
             .decode::<frost_ed25519::Ed25519Sha512>()

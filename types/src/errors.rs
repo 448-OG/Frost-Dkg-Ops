@@ -4,7 +4,7 @@ use crate::TransmitType;
 
 pub type FrostOpsResult<T> = Result<T, FrostOpsError>;
 
-#[derive(Debug, PartialEq, Eq, thiserror::Error, Clone)]
+#[derive(Debug, PartialEq, thiserror::Error, Clone)]
 pub enum FrostOpsError {
     #[error(
         "The username, email, random hex or identifier to use as the FROST Credential seed is invalid. It must be at least 3 characters long"
@@ -20,8 +20,6 @@ pub enum FrostOpsError {
         "The server requires the email address to belong to the organization but the username was okay but SLD/TLD or both was incorrect: `{0}`"
     )]
     InvalidDomainSldTldForEmail(String),
-    #[error("The organization's domain has not been set")]
-    SldTlDNotSet,
     #[error("The FROST credential details have not been set")]
     FrostCredentialNotSet,
     #[error("The Ephemeral Client Device Keypair has not been set")]
@@ -33,8 +31,10 @@ pub enum FrostOpsError {
     #[cfg(feature = "client_storage")]
     #[error("FROST error: {0}")]
     Storage(FrostClientStorageError),
-    #[error("The Ephemeral Client Device Verifying Key is invalid")]
-    InvalidEphemeralClientDeviceVerifyingKey,
+    #[error("Unable to serialize HPKE secret key")]
+    UnableToSerializeHpkeSecretKey,
+    #[error("Unable to deserialize HPKE secret key")]
+    UnableToDeserializeHpkeSecretKey,
     #[error("Invalid Tai64N bytes")]
     Tai64NTimestampBytes,
     #[error(
@@ -49,13 +49,19 @@ pub enum FrostOpsError {
     MinMaxNotSet,
     #[error("The relay sent too many Round1 packages. Aborting adding received round1 packages")]
     RelayRound1TooManyPackages,
+    #[error("{0}")]
+    EphemeralDeviceKeys(hpke_rs::HpkeError),
+}
+
+impl From<hpke_rs::HpkeError> for FrostOpsError {
+    fn from(value: hpke_rs::HpkeError) -> Self {
+        Self::EphemeralDeviceKeys(value)
+    }
 }
 
 #[cfg(feature = "client")]
 #[derive(Debug, PartialEq, Eq, thiserror::Error, Clone)]
 pub enum FrostClientError {
-    #[error("Unable to sign the payload using the Ed25519 Client Device Signing Key")]
-    ClientDeviceSigningError,
     #[error("Unable to decode `FrostEnvelopePayload` from bytes.")]
     DecodeFrostEnvelopePayload,
     #[error(

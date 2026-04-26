@@ -1,16 +1,15 @@
+use bitcode::{Decode, Encode};
 use frost_core::Ciphersuite;
 use frost_dkg_types::{
     EphemeralClientDeviceKeypair, EphemeralClientDeviceVerifyingKey, FrostCredential,
-    FrostDkgState, FrostMessageEnvelope, FrostOpsResult, MinMaxParticipants,
+    FrostCredentialSeed, FrostDkgState, FrostOpsResult, MinMaxParticipants, Tai64NTimestamp,
     round1::{Round1PackageBytes, Round1SecretBytes},
 };
 
 pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
     fn init() -> impl Future<Output = FrostOpsResult<Self>>;
 
-    fn set_organization_sld_tld(&self, sld_tld: &str) -> impl Future<Output = FrostOpsResult<()>>;
-
-    fn get_organization_sld_tld(&self) -> impl Future<Output = FrostOpsResult<Option<String>>>;
+    fn get_organization_sld_tld(&self) -> impl Future<Output = FrostOpsResult<String>>;
 
     fn set_ecdk(
         &self,
@@ -45,6 +44,8 @@ pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
         min_max_participants: MinMaxParticipants,
     ) -> impl Future<Output = FrostOpsResult<()>>;
 
+    fn get_participants(&self) -> impl Future<Output = FrostOpsResult<Vec<FrostCredentialSeed>>>;
+
     fn set_round1_packages(
         &self,
         secret: Round1SecretBytes,
@@ -57,15 +58,24 @@ pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
 
     fn set_received_round1_package(
         &self,
-        envelope: FrostMessageEnvelope,
+        envelope: FrostRound1ReceivedPackage,
     ) -> impl Future<Output = FrostOpsResult<()>>;
 
     fn set_received_round1_packages(
         &self,
-        envelopes: Vec<FrostMessageEnvelope>,
+        round1_packages: Vec<FrostRound1ReceivedPackage>,
     ) -> impl Future<Output = FrostOpsResult<()>>;
 
     fn get_received_round1_packages(
         &self,
-    ) -> impl Future<Output = FrostOpsResult<Vec<FrostMessageEnvelope>>>;
+    ) -> impl Future<Output = FrostOpsResult<Vec<FrostRound1ReceivedPackage>>>;
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Hash)]
+pub struct FrostRound1ReceivedPackage {
+    pub timestamp: Tai64NTimestamp,
+    pub organization: String,
+    pub sender_seed: FrostCredentialSeed,
+    pub ecdvk: EphemeralClientDeviceVerifyingKey,
+    pub payload: Round1PackageBytes,
 }

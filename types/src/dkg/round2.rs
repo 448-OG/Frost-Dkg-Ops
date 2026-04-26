@@ -100,7 +100,7 @@ mod sanity_checks {
         {
             // Round2
 
-            use crate::{Round2PackageBytes, Round2SecretBytes};
+            use super::{Round2PackageBytes, Round2SecretBytes};
 
             let party1_round2_secret_bytes =
                 Round2SecretBytes::serialize(&party1_round2_secret_package).unwrap();

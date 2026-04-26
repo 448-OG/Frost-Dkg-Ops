@@ -3,14 +3,14 @@ use std::marker::PhantomData;
 use frost_core::Ciphersuite;
 
 use frost_dkg_types::{
-    EphemeralClientDeviceKeypair, EphemeralClientDeviceSignature,
+    EphemeralClientDeviceHeOutputs, EphemeralClientDeviceKeypair,
     EphemeralClientDeviceVerifyingKey, FrostClientError, FrostCredential, FrostDkgState,
-    FrostEnvelopePayload, FrostMessageEnvelope, FrostOpsError, FrostOpsResult, MinMaxParticipants,
+    FrostMessageEnvelope, FrostOpsError, FrostOpsResult, MinMaxParticipants, ParticipantOperation,
     Tai64NTimestamp, TransmitType, round1,
 };
 use zeroize::Zeroize;
 
-use crate::{FrostAuthenticatedChannel, FrostDkgStorage};
+use crate::{FrostAuthenticatedChannel, FrostDkgStorage, FrostRound1ReceivedPackage};
 
 pub struct DkgStateHandler<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>> {
     storage: S,
@@ -39,7 +39,7 @@ impl<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>>
 
     pub async fn generate_ecdk(&self) -> FrostOpsResult<()> {
         self.storage
-            .set_ecdk(&EphemeralClientDeviceKeypair::new())
+            .set_ecdk(&EphemeralClientDeviceKeypair::new()?)
             .await
     }
 
@@ -64,6 +64,8 @@ impl<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>>
     }
 
     pub async fn round1_broadcast_package(&self) -> FrostOpsResult<FrostMessageEnvelope> {
+        let ecdvk = self.get_ecdk().await?;
+
         let state = self.storage.get_state().await?;
 
         let credential = self
@@ -74,7 +76,7 @@ impl<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>>
         let sender_seed = credential.seed().clone();
         let min_max = self.storage.get_dkg_min_max_participants().await?;
 
-        let package = if let Some(exists) = self.storage.get_round1_package().await? {
+        let dkg_payload = if let Some(exists) = self.storage.get_round1_package().await? {
             exists
         } else {
             if !matches!(state, FrostDkgState::Round1) {
@@ -94,7 +96,7 @@ impl<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>>
 
             let mut secret = round1::Round1SecretBytes::serialize(&secret)?;
             secret.zeroize();
-            let public = round1::Round1PackageBytes::encode(&public)?;
+            let public = round1::Round1PackageBytes::parse(&public)?;
 
             self.storage
                 .set_round1_packages(secret, public.clone())
@@ -103,17 +105,12 @@ impl<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>>
             public
         };
 
-        let organization = self
-            .storage
-            .get_organization_sld_tld()
-            .await?
-            .ok_or(FrostOpsError::SldTlDNotSet)?;
-
+        let organization = self.storage.get_organization_sld_tld().await?;
         let transmission_type = TransmitType::Broadcast;
 
-        let payload = FrostEnvelopePayload::DkgRound1(package);
-
-        let ecdk = self.storage.get_edcs().await?;
+        let mut payload = Vec::<u8>::default();
+        payload.insert(0, ParticipantOperation::DkgRound1 as u8);
+        payload.extend_from_slice(&dkg_payload.encode());
 
         let signed = FrostMessageEnvelope {
             timestamp: Tai64NTimestamp::now(),
@@ -122,10 +119,8 @@ impl<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>>
             sender_seed,
             recipient_seed: None,
             payload,
-            ecdvk: EphemeralClientDeviceVerifyingKey::default(),
-            ecds: EphemeralClientDeviceSignature::default(),
-        }
-        .sign(&ecdk)?;
+            he_outputs: EphemeralClientDeviceHeOutputs::new(ecdvk),
+        };
 
         Ok(signed)
     }
@@ -147,7 +142,7 @@ impl<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>>
 
         let min_max = self.storage.get_dkg_min_max_participants().await?;
 
-        let current_participants = self.storage.get_received_round1_packages().await?;
+        let current_participants = self.storage.get_participants().await?;
 
         let my_credential_seed = self
             .storage
@@ -155,28 +150,53 @@ impl<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>>
             .await?
             .ok_or(FrostOpsError::FrostCredentialNotSet)?;
 
-        let mut verified = Vec::<FrostMessageEnvelope>::new();
-        let mut unverified = Vec::<FrostMessageEnvelope>::new();
+        let mut valid_packages = Vec::<FrostRound1ReceivedPackage>::new();
+        let mut invalid_packages = Vec::<FrostMessageEnvelope>::new();
 
         for package in round1_packages {
             if &package.sender_seed == my_credential_seed.seed() {
                 continue;
             }
 
-            if current_participants.iter().any(|exists| exists == &package) {
+            if current_participants
+                .iter()
+                .any(|exists| exists == &package.sender_seed)
+            {
                 continue;
             }
 
-            match package.payload {
-                FrostEnvelopePayload::DkgRound1(_) => {
+            let (operation, data) = if let Some(value) = package.payload.split_first() {
+                value
+            } else {
+                invalid_packages.push(package);
+
+                continue;
+            };
+
+            let operation: ParticipantOperation = (*operation).into();
+
+            match operation {
+                ParticipantOperation::DkgRound1 => {
                     if package.transmission_type != TransmitType::Broadcast {
                         return Err(FrostOpsError::RelayRound1IsCorrupted(
                             package.transmission_type,
                         ));
-                    } else if !package.verify_ecds()? {
-                        unverified.push(package);
+                    }
+
+                    self.check_valid_sld_tld(&package.organization).await?;
+
+                    if let Ok(valid_value) = bitcode::decode::<round1::Round1PackageBytes>(data) {
+                        let store_value = FrostRound1ReceivedPackage {
+                            timestamp: package.timestamp,
+                            organization: package.organization,
+                            sender_seed: package.sender_seed,
+                            payload: valid_value,
+                            ecdvk: package.he_outputs.sender_static_verifying_key,
+                        };
+
+                        valid_packages.push(store_value);
                     } else {
-                        verified.push(package);
+                        invalid_packages.push(package);
                     }
                 }
 
@@ -184,21 +204,23 @@ impl<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>>
             }
         }
 
-        let current_len = verified.len() + current_participants.len() + 1;
+        let current_len = valid_packages.len() + current_participants.len() + 1;
         if current_len > min_max.max as usize {
             return Err(FrostOpsError::RelayRound1TooManyPackages);
         }
 
-        self.storage.set_received_round1_packages(verified).await?;
+        self.storage
+            .set_received_round1_packages(valid_packages)
+            .await?;
 
         if current_len == min_max.max as usize {
             let new_state = current_state.transition();
 
             self.storage.set_state(new_state).await?;
 
-            Ok((new_state, unverified))
+            Ok((new_state, invalid_packages))
         } else {
-            Ok((current_state, unverified))
+            Ok((current_state, invalid_packages))
         }
     }
 
@@ -211,34 +233,39 @@ impl<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>>
 
         Ok(new_state)
     }
+
+    async fn check_valid_sld_tld(&self, sld_tld: &str) -> FrostOpsResult<bool> {
+        let stored_sld_tld = self.storage.get_organization_sld_tld().await?;
+        Ok(stored_sld_tld == sld_tld)
+    }
+
+    pub async fn get_ecdk(&self) -> FrostOpsResult<EphemeralClientDeviceVerifyingKey> {
+        self.storage.get_edcvk().await
+    }
 }
 
 #[cfg(test)]
 mod sanity_checks {
-    use std::{collections::HashMap, marker::PhantomData};
+    use std::{
+        collections::{HashMap, HashSet},
+        marker::PhantomData,
+    };
 
     use async_dup::Arc;
     use async_lock::RwLock;
     use bitcode::Decode;
     use frost_core::Ciphersuite;
     use frost_dkg_types::{
-        EphemeralClientDeviceKeypair, EphemeralClientDeviceSignature,
-        EphemeralClientDeviceVerifyingKey, FrostClientError, FrostCredential, FrostCredentialSeed,
-        FrostDkgState, FrostEnvelopePayload, FrostMessageEnvelope, FrostOpsError, FrostOpsResult,
-        FrostRelayMessageEnvelope, MinMaxParticipants, round1,
+        EphemeralClientDeviceKeypair, EphemeralClientDeviceVerifyingKey, FrostClientError,
+        FrostCredential, FrostCredentialSeed, FrostDkgState, FrostMessageEnvelope, FrostOpsError,
+        FrostOpsResult, FrostRelayMessageEnvelope, MinMaxParticipants, TransmitType, round1,
     };
 
-    use crate::{DkgStateHandler, FrostAuthenticatedChannel, FrostDkgStorage};
+    use crate::{
+        DkgStateHandler, FrostAuthenticatedChannel, FrostDkgStorage, FrostRound1ReceivedPackage,
+    };
 
     type FrostCredentialEd25519 = FrostCredential<frost_ed25519::Ed25519Sha512>;
-
-    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-    pub struct FrostCredentialStoredInRelay {
-        organization: String,
-        seed: FrostCredentialSeed,
-        ecdvk: EphemeralClientDeviceVerifyingKey,
-        ecds: EphemeralClientDeviceSignature, //can be transmitted to other participants for verification
-    }
 
     #[test]
     fn register_credential() {
@@ -272,25 +299,6 @@ mod sanity_checks {
             >::init()
             .await
             .unwrap();
-
-            {
-                //set SLD-TLD domain
-                party1
-                    .storage
-                    .set_organization_sld_tld(sld_tld)
-                    .await
-                    .unwrap();
-                party2
-                    .storage
-                    .set_organization_sld_tld(sld_tld)
-                    .await
-                    .unwrap();
-                party3
-                    .storage
-                    .set_organization_sld_tld(sld_tld)
-                    .await
-                    .unwrap();
-            }
 
             let party1_credential =
                 FrostCredentialEd25519::new_with_email_strict(party1_id, sld_tld).unwrap();
@@ -370,29 +378,17 @@ mod sanity_checks {
             let party1_envelope = FrostRelayMessageEnvelope {
                 organization: sld_tld.to_string(),
                 payload: party1_seed.encode(),
-                ecdvk: EphemeralClientDeviceVerifyingKey::default(),
-                ecds: EphemeralClientDeviceSignature::default(),
-            }
-            .sign(&party1_ecdk)
-            .unwrap();
+            };
 
             let party2_envelope = FrostRelayMessageEnvelope {
                 organization: sld_tld.to_string(),
                 payload: party2_seed.encode(),
-                ecdvk: EphemeralClientDeviceVerifyingKey::default(),
-                ecds: EphemeralClientDeviceSignature::default(),
-            }
-            .sign(&party2_ecdk)
-            .unwrap();
+            };
 
             let party3_envelope = FrostRelayMessageEnvelope {
                 organization: sld_tld.to_string(),
                 payload: party3_seed.encode(),
-                ecdvk: EphemeralClientDeviceVerifyingKey::default(),
-                ecds: EphemeralClientDeviceSignature::default(),
-            }
-            .sign(&party3_ecdk)
-            .unwrap();
+            };
 
             let mut remote_server_storage = RemoteServerStorage::new();
 
@@ -474,22 +470,24 @@ mod sanity_checks {
 
     struct ClientStorage<C: Ciphersuite> {
         min_max: Option<MinMaxParticipants>,
-        org_info: Option<String>,
+        org_info: String,
         state: FrostDkgState,
         credential: Option<FrostCredential<C>>,
         ecdk: Option<EphemeralClientDeviceKeypair>,
+        participants: Vec<FrostCredentialSeed>,
         round1_secret: Option<round1::Round1SecretBytes>,
         round1_package: Option<round1::Round1PackageBytes>,
-        received_round1_packages: HashMap<FrostCredentialSeed, FrostMessageEnvelope>,
+        received_round1_packages: HashMap<FrostCredentialSeed, FrostRound1ReceivedPackage>,
     }
 
     impl<C: Ciphersuite> FrostDkgStorage<C> for Arc<RwLock<ClientStorage<C>>> {
         async fn init() -> FrostOpsResult<Self> {
             let init = ClientStorage {
                 min_max: Option::default(),
-                org_info: Option::default(),
-                state: FrostDkgState::Uninitialized,
+                org_info: "example.com".to_string(),
+                state: FrostDkgState::InitCredentials,
                 credential: Option::default(),
+                participants: Vec::default(),
                 ecdk: Option::default(),
                 round1_secret: Option::default(),
                 round1_package: Option::default(),
@@ -499,33 +497,8 @@ mod sanity_checks {
             Ok(Arc::new(RwLock::new(init)))
         }
 
-        async fn get_organization_sld_tld(
-            &self,
-        ) -> frost_dkg_types::FrostOpsResult<Option<String>> {
+        async fn get_organization_sld_tld(&self) -> frost_dkg_types::FrostOpsResult<String> {
             Ok(self.read().await.org_info.clone())
-        }
-
-        async fn set_organization_sld_tld(
-            &self,
-            sld_tld: &str,
-        ) -> frost_dkg_types::FrostOpsResult<()> {
-            let state = self.get_state().await?;
-
-            if state != FrostDkgState::Uninitialized {
-                return Err(FrostClientError::InvalidClientState {
-                    current: state,
-                    expected: FrostDkgState::Uninitialized,
-                }
-                .into());
-            }
-
-            self.write().await.org_info.replace(sld_tld.to_string());
-
-            let new_state = state.transition();
-
-            self.set_state(new_state).await?; //TODO: Use same tx
-
-            Ok(())
         }
 
         async fn get_dkg_min_max_participants(&self) -> FrostOpsResult<MinMaxParticipants> {
@@ -552,6 +525,10 @@ mod sanity_checks {
             writer.state = state.transition();
 
             Ok(())
+        }
+
+        async fn get_participants(&self) -> FrostOpsResult<Vec<FrostCredentialSeed>> {
+            Ok(self.read().await.participants.clone())
         }
 
         async fn get_credential(
@@ -642,7 +619,7 @@ mod sanity_checks {
 
         async fn set_received_round1_package(
             &self,
-            envelope: FrostMessageEnvelope,
+            envelope: crate::FrostRound1ReceivedPackage,
         ) -> FrostOpsResult<()> {
             let credential_seed = envelope.sender_seed.clone();
 
@@ -656,7 +633,7 @@ mod sanity_checks {
 
         async fn set_received_round1_packages(
             &self,
-            envelopes: Vec<FrostMessageEnvelope>,
+            envelopes: Vec<FrostRound1ReceivedPackage>,
         ) -> FrostOpsResult<()> {
             for envelope in envelopes {
                 let credential_seed = envelope.sender_seed.clone();
@@ -670,7 +647,9 @@ mod sanity_checks {
             Ok(())
         }
 
-        async fn get_received_round1_packages(&self) -> FrostOpsResult<Vec<FrostMessageEnvelope>> {
+        async fn get_received_round1_packages(
+            &self,
+        ) -> FrostOpsResult<Vec<FrostRound1ReceivedPackage>> {
             Ok(self
                 .read()
                 .await
@@ -701,8 +680,9 @@ mod sanity_checks {
     struct RemoteServerStorage {
         organization: String,
         min_max: MinMaxParticipants,
-        credential_seeds: HashMap<FrostCredentialSeed, FrostCredentialStoredInRelay>,
-        round1_dkg: HashMap<FrostCredentialSeed, FrostMessageEnvelope>,
+        participants: Vec<FrostCredentialSeed>,
+        broadcast_messages: HashSet<FrostMessageEnvelope>,
+        unicast_messages: HashMap<FrostCredentialSeed, FrostMessageEnvelope>,
     }
 
     impl RemoteServerStorage {
@@ -724,26 +704,16 @@ mod sanity_checks {
                 panic!("Invalid organization");
             }
 
-            if data.verify_ecds().unwrap() {
-                panic!("Invalid Ephemeral Client Device Signature")
-            }
-
             let seed = bitcode::decode::<FrostCredentialSeed>(data.payload.as_ref())
                 .expect("Unable to decode `FrostCredentialSeed`");
-            let to_storage_data = FrostCredentialStoredInRelay {
-                organization: data.organization,
-                seed: seed.clone(),
-                ecdvk: data.ecdvk,
-                ecds: data.ecds,
-            };
 
-            self.credential_seeds.insert(seed, to_storage_data);
+            self.participants.push(seed);
 
             self.min_max
         }
 
         fn is_valid_participant(&self, participant: &FrostCredentialSeed) -> bool {
-            self.credential_seeds.contains_key(participant)
+            self.participants.iter().any(|stored| stored == participant)
         }
 
         fn receive_transmission(&mut self, data: FrostMessageEnvelope) -> &mut Self {
@@ -751,30 +721,44 @@ mod sanity_checks {
                 panic!("Invalid organization");
             }
 
-            if !data.verify_ecds().unwrap() {
-                panic!("Invalid Ephemeral Client Device Signature")
+            if !self.is_valid_participant(&data.sender_seed) {
+                panic!("Invalid sender participant");
             }
 
-            match data.payload {
-                FrostEnvelopePayload::DkgRound1(_) => {
-                    self.process_round1(data.sender_seed.clone(), data)
-                }
-                _ => todo!(),
+            if let Some(participant) = data.recipient_seed.as_ref()
+                && !self.is_valid_participant(participant)
+            {
+                panic!("Recipient is an invalid participant");
+            }
+
+            match data.transmission_type {
+                TransmitType::Broadcast => self.receive_broadcast(data),
+                TransmitType::Unicast => self.receive_unicast(data),
+                _ => unreachable!("TransmitType::NarrowCast"),
             }
         }
 
-        fn process_round1(
-            &mut self,
-            sender_seed: FrostCredentialSeed,
-            data: FrostMessageEnvelope,
-        ) -> &mut Self {
-            self.round1_dkg.insert(sender_seed, data);
+        fn receive_broadcast(&mut self, data: FrostMessageEnvelope) -> &mut Self {
+            if let Some(participant) = data.recipient_seed.as_ref()
+                && !self.is_valid_participant(participant)
+            {
+                panic!("Recipient is an invalid participant");
+            }
+
+            // In real world add to queue
+            self.broadcast_messages.insert(data);
+
+            self
+        }
+
+        fn receive_unicast(&mut self, data: FrostMessageEnvelope) -> &mut Self {
+            self.unicast_messages.insert(data.sender_seed.clone(), data);
 
             self
         }
 
         fn get_round1_packages(&self) -> Vec<FrostMessageEnvelope> {
-            self.round1_dkg.values().cloned().collect()
+            self.broadcast_messages.clone().into_iter().collect()
         }
     }
 }
