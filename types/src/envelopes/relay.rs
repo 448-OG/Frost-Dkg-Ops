@@ -10,7 +10,7 @@ pub enum RelayOperation {
 // A message sent by a participant and meant for the relay server
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Hash)]
 pub struct FrostRelayMessageEnvelope<T: AsRef<[u8]>> {
-    pub organization: String,
+    pub sld_tld_checked: String,
     pub payload: T,
 }
 
@@ -61,17 +61,17 @@ mod sanity_checks {
         let organization = "example.com";
 
         let party1_envelope = FrostRelayMessageEnvelope {
-            organization: organization.to_string(),
+            sld_tld_checked: organization.to_string(),
             payload: party1_credential_local.seed().encode(),
         };
 
         let party2_envelope = FrostRelayMessageEnvelope {
-            organization: organization.to_string(),
+            sld_tld_checked: organization.to_string(),
             payload: party2_credential_local.seed().encode(),
         };
 
         let party3_envelope = FrostRelayMessageEnvelope {
-            organization: organization.to_string(),
+            sld_tld_checked: organization.to_string(),
             payload: party3_credential_local.seed().encode(),
         };
 
@@ -85,14 +85,14 @@ mod sanity_checks {
             ) {
                 let organization = "example.com";
 
-                if data.organization != organization {
+                if data.sld_tld_checked != organization {
                     panic!("Invalid organization");
                 }
 
                 let seed = bitcode::decode::<FrostCredentialSeed>(data.payload.as_ref())
                     .expect("Unable to decode `FrostCredentialSeed`");
                 let to_storage_data = FrostCredentialStoredInRelay {
-                    organization: data.organization,
+                    organization: data.sld_tld_checked,
                     seed: seed.clone(),
                 };
 

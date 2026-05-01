@@ -1,3 +1,5 @@
+use core::fmt;
+
 use bitcode::{Decode, Encode};
 use frost_core::{
     Ciphersuite, Signature, SigningPackage,
@@ -8,9 +10,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::FrostOpsResult;
 
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
-)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop)]
 pub struct FrostSignatureBytes(Vec<u8>);
 
 impl FrostSignatureBytes {
@@ -23,9 +23,15 @@ impl FrostSignatureBytes {
     }
 }
 
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
-)]
+impl fmt::Debug for FrostSignatureBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FrostSignatureBytes")
+            .field(&faster_hex::hex_string_upper(&self.0))
+            .finish()
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop)]
 pub struct FrostSignatureShareBytes(Vec<u8>);
 
 impl FrostSignatureShareBytes {
@@ -38,9 +44,15 @@ impl FrostSignatureShareBytes {
     }
 }
 
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
-)]
+impl fmt::Debug for FrostSignatureShareBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FrostSignatureShareBytes")
+            .field(&faster_hex::hex_string_upper(&self.0))
+            .finish()
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop)]
 pub struct FrostSigningPackageBytes(Vec<u8>);
 
 impl FrostSigningPackageBytes {
@@ -53,9 +65,15 @@ impl FrostSigningPackageBytes {
     }
 }
 
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
-)]
+impl fmt::Debug for FrostSigningPackageBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FrostSigningPackageBytes")
+            .field(&faster_hex::hex_string_upper(&self.0))
+            .finish()
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop)]
 pub struct FrostSigningNoncesBytes(Vec<u8>);
 
 impl FrostSigningNoncesBytes {
@@ -68,9 +86,15 @@ impl FrostSigningNoncesBytes {
     }
 }
 
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
-)]
+impl fmt::Debug for FrostSigningNoncesBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FrostSigningNoncesBytes")
+            .field(&faster_hex::hex_string_upper(&self.0))
+            .finish()
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop)]
 pub struct FrostSigningCommitmentsBytes(Vec<u8>);
 
 impl FrostSigningCommitmentsBytes {
@@ -80,6 +104,14 @@ impl FrostSigningCommitmentsBytes {
 
     pub fn decode<C: Ciphersuite>(&self) -> FrostOpsResult<SigningCommitments<C>> {
         Ok(SigningCommitments::<C>::deserialize(&self.0)?)
+    }
+}
+
+impl fmt::Debug for FrostSigningCommitmentsBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FrostSigningCommitmentsBytes")
+            .field(&faster_hex::hex_string_upper(&self.0))
+            .finish()
     }
 }
 

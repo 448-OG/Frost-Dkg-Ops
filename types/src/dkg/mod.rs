@@ -12,3 +12,6 @@ pub mod finalized;
 
 mod state;
 pub use state::*;
+
+mod storage;
+pub use storage::*;

@@ -1,3 +1,5 @@
+use core::fmt;
+
 use bitcode::{Decode, Encode};
 use frost_core::{
     Ciphersuite, Identifier,
@@ -17,8 +19,7 @@ impl<C: Ciphersuite + Clone + Copy> FrostCredential<C> {
     pub fn new_anonymous() -> FrostOpsResult<Self> {
         let frost_credential_seed = FrostCredentialSeed::new_anonymous()?;
 
-        let frost_identifier =
-            Self::credential_type_to_identifier(frost_credential_seed.as_bytes())?;
+        let frost_identifier = frost_credential_seed.frost_identifier()?;
 
         Ok(Self {
             frost_identifier,
@@ -30,8 +31,7 @@ impl<C: Ciphersuite + Clone + Copy> FrostCredential<C> {
     pub fn new_with_email(email_address: &str) -> FrostOpsResult<Self> {
         let frost_credential_seed = FrostCredentialSeed::new_with_email(email_address)?;
 
-        let frost_identifier =
-            Self::credential_type_to_identifier(frost_credential_seed.as_bytes())?;
+        let frost_identifier = frost_credential_seed.frost_identifier()?;
 
         Ok(Self {
             frost_identifier,
@@ -44,8 +44,7 @@ impl<C: Ciphersuite + Clone + Copy> FrostCredential<C> {
     pub fn new_with_email_strict(username: &str, sld_tld: &str) -> FrostOpsResult<Self> {
         let frost_credential_seed = FrostCredentialSeed::new_with_email_strict(username, sld_tld)?;
 
-        let frost_identifier =
-            Self::credential_type_to_identifier(frost_credential_seed.as_bytes())?;
+        let frost_identifier = frost_credential_seed.frost_identifier()?;
 
         Ok(Self {
             frost_identifier,
@@ -57,8 +56,7 @@ impl<C: Ciphersuite + Clone + Copy> FrostCredential<C> {
     pub fn new_with_username(username: &str) -> FrostOpsResult<Self> {
         let frost_credential_seed = FrostCredentialSeed::new_with_username(username)?;
 
-        let frost_identifier =
-            Self::credential_type_to_identifier(frost_credential_seed.as_bytes())?;
+        let frost_identifier = frost_credential_seed.frost_identifier()?;
 
         Ok(Self {
             frost_identifier,
@@ -94,10 +92,6 @@ impl<C: Ciphersuite + Clone + Copy> FrostCredential<C> {
         })
     }
 
-    fn credential_type_to_identifier(key: impl AsRef<[u8]>) -> FrostOpsResult<Identifier<C>> {
-        Ok(Identifier::derive(key.as_ref())?)
-    }
-
     pub fn credential_type(&self) -> FrostCredentialType {
         self.seed().credential_type()
     }
@@ -108,6 +102,10 @@ impl<C: Ciphersuite + Clone + Copy> FrostCredential<C> {
 
     pub fn seed(&self) -> &FrostCredentialSeed {
         &self.seed
+    }
+
+    pub fn seed_take(self) -> FrostCredentialSeed {
+        self.seed
     }
 }
 
@@ -121,18 +119,7 @@ pub struct FrostCredentialBytes {
 }
 
 #[derive(
-    Debug,
-    Default,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Clone,
-    Encode,
-    Decode,
-    Hash,
-    Zeroize,
-    ZeroizeOnDrop,
+    Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Hash, Zeroize, ZeroizeOnDrop,
 )]
 pub struct FrostIdentifierBytes(Vec<u8>);
 
@@ -146,7 +133,15 @@ impl FrostIdentifierBytes {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash)]
+impl fmt::Debug for FrostIdentifierBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FrostIdentifierBytes")
+            .field(&faster_hex::hex_string_upper(&self.0))
+            .finish()
+    }
+}
+
+#[derive(Default, Clone, Encode, Decode, Zeroize)]
 pub struct FrostSigningShareBytes(Vec<u8>);
 
 impl FrostSigningShareBytes {
@@ -158,6 +153,24 @@ impl FrostSigningShareBytes {
         Ok(SigningShare::<C>::deserialize(&self.0)?)
     }
 }
+
+impl fmt::Debug for FrostSigningShareBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FrostSigningShareBytes")
+            .field(&faster_hex::hex_string_upper(&self.0))
+            .finish()
+    }
+}
+
+impl PartialEq for FrostSigningShareBytes {
+    fn eq(&self, other: &Self) -> bool {
+        use subtle::ConstantTimeEq;
+
+        self.0.ct_eq(&other.0).into()
+    }
+}
+
+impl Eq for FrostSigningShareBytes {}
 
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash)]
 pub struct FrostCommitmentBytes(pub(crate) Vec<Vec<u8>>);

@@ -1,31 +1,36 @@
+use getrandom::SysRng;
 use rand_chacha::{
     ChaCha12Rng, ChaCha20Rng,
-    rand_core::{RngCore, SeedableRng},
+    rand_core::{Rng, SeedableRng},
 };
 use subtle::ConstantTimeEq;
 use zeroize::Zeroizing;
 
+use crate::{FrostOpsError, FrostOpsResult};
+
 pub struct RandomBytes<const N: usize>(Zeroizing<[u8; N]>);
 
 impl<const N: usize> RandomBytes<N> {
-    pub fn generate() -> Self {
-        let mut rng = ChaCha20Rng::from_os_rng();
+    pub fn generate() -> FrostOpsResult<Self> {
+        let mut rng =
+            ChaCha20Rng::try_from_rng(&mut SysRng).or(Err(FrostOpsError::BadRandomness))?;
 
         let mut buffer = Zeroizing::new([0u8; N]);
 
         rng.fill_bytes(buffer.as_mut());
 
-        Self(buffer)
+        Ok(Self(buffer))
     }
 
-    pub fn generate_chacha_12() -> Self {
-        let mut rng = ChaCha12Rng::from_os_rng();
+    pub fn generate_chacha_12() -> FrostOpsResult<Self> {
+        let mut rng =
+            ChaCha12Rng::try_from_rng(&mut SysRng).or(Err(FrostOpsError::BadRandomness))?;
 
         let mut buffer = Zeroizing::new([0u8; N]);
 
         rng.fill_bytes(buffer.as_mut());
 
-        Self(buffer)
+        Ok(Self(buffer))
     }
 
     pub fn expose(&self) -> &[u8; N] {

@@ -1,3 +1,5 @@
+use core::fmt;
+
 use bitcode::{Decode, Encode};
 use frost_core::{
     Ciphersuite, VerifyingKey,
@@ -7,6 +9,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{FrostIdentifierBytes, FrostOpsResult, FrostSigningShareBytes};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrostKeyPackageBytes {
     identifier: FrostIdentifierBytes,
     signing_share: FrostSigningShareBytes,
@@ -45,11 +48,15 @@ impl FrostKeyPackageBytes {
             self.minimum_signers,
         ))
     }
+
+    pub fn verifying_key_base58<C: Ciphersuite>(&self) -> FrostOpsResult<String> {
+        let vk = self.verifying_key.decode::<C>()?;
+
+        Ok(bs58::encode(&vk.serialize()?).into_string())
+    }
 }
 
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
-)]
+#[derive(Clone, Encode, Decode, Zeroize, ZeroizeOnDrop)]
 pub struct FrostVerifyingShareBytes(Vec<u8>);
 
 impl FrostVerifyingShareBytes {
@@ -62,9 +69,25 @@ impl FrostVerifyingShareBytes {
     }
 }
 
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
-)]
+impl PartialEq for FrostVerifyingShareBytes {
+    fn eq(&self, other: &Self) -> bool {
+        use subtle::ConstantTimeEq;
+
+        self.0.ct_eq(&other.0).into()
+    }
+}
+
+impl Eq for FrostVerifyingShareBytes {}
+
+impl fmt::Debug for FrostVerifyingShareBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FrostVerifyingShareBytes")
+            .field(&faster_hex::hex_string_upper(&self.0))
+            .finish()
+    }
+}
+
+#[derive(Clone, Encode, Decode, Zeroize, ZeroizeOnDrop)]
 pub struct FrostVerifyingKeyBytes(Vec<u8>);
 
 impl FrostVerifyingKeyBytes {
@@ -77,9 +100,25 @@ impl FrostVerifyingKeyBytes {
     }
 }
 
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
-)]
+impl PartialEq for FrostVerifyingKeyBytes {
+    fn eq(&self, other: &Self) -> bool {
+        use subtle::ConstantTimeEq;
+
+        self.0.ct_eq(&other.0).into()
+    }
+}
+
+impl Eq for FrostVerifyingKeyBytes {}
+
+impl fmt::Debug for FrostVerifyingKeyBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FrostVerifyingKeyBytes")
+            .field(&faster_hex::hex_string_upper(&self.0))
+            .finish()
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop)]
 pub struct FrostPublicKeyPackage(Vec<u8>);
 
 impl FrostPublicKeyPackage {
@@ -89,6 +128,29 @@ impl FrostPublicKeyPackage {
 
     pub fn decode<C: Ciphersuite>(&self) -> FrostOpsResult<PublicKeyPackage<C>> {
         Ok(PublicKeyPackage::<C>::deserialize(&self.0)?)
+    }
+
+    pub fn verifying_key_base58<C: Ciphersuite>(&self) -> FrostOpsResult<String> {
+        let package = self.decode::<C>()?;
+        let vk = package.verifying_key();
+
+        Ok(bs58::encode(&vk.serialize()?).into_string())
+    }
+}
+
+impl fmt::Debug for FrostPublicKeyPackage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            format_args!("FrostPublicKeyPackage({})", &blake3::hash(&self.0))
+        )
+    }
+}
+
+impl fmt::Display for FrostPublicKeyPackage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &blake3::hash(&self.0))
     }
 }
 
