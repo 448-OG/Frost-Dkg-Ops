@@ -5,7 +5,9 @@ use frost_core::{
 };
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{FrostCommitmentBytes, FrostOpsResult, FrostProtocolError, ProofOfKnowledgeBytes};
+use crate::{
+    FrostCommitmentBytes, FrostOpsError, FrostOpsResult, FrostProtocolError, ProofOfKnowledgeBytes,
+};
 
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash, ZeroizeOnDrop,
@@ -13,6 +15,15 @@ use crate::{FrostCommitmentBytes, FrostOpsResult, FrostProtocolError, ProofOfKno
 pub struct Round1SecretBytes(Vec<u8>);
 
 impl Round1SecretBytes {
+    pub fn new<C: Ciphersuite>(
+        mut round1_secret: round1::SecretPackage<C>,
+    ) -> FrostOpsResult<Self> {
+        let encoded = Self::serialize(&round1_secret)?;
+
+        round1_secret.zeroize();
+
+        Ok(encoded)
+    }
     pub fn serialize<C: Ciphersuite>(
         round1_secret: &round1::SecretPackage<C>,
     ) -> FrostOpsResult<Self> {
@@ -54,12 +65,19 @@ impl Round1PackageBytes {
         bitcode::encode(self)
     }
 
-    pub fn decode<C: Ciphersuite>(&self) -> FrostOpsResult<round1::Package<C>> {
+    pub fn to_frost_package<C: Ciphersuite>(&self) -> FrostOpsResult<round1::Package<C>> {
         let commitment = VerifiableSecretSharingCommitment::<C>::deserialize(&self.commitment.0)?;
         let proof_of_knowledge =
             frost_core::Signature::<C>::deserialize(&self.proof_of_knowledge.0)?;
 
         Ok(round1::Package::<C>::new(commitment, proof_of_knowledge))
+    }
+
+    pub fn decode(bytes: &(impl Decode<'static> + AsRef<[u8]>)) -> FrostOpsResult<Self> {
+        let decoded = bitcode::decode::<Self>(bytes.as_ref())
+            .or(Err(FrostOpsError::InvalidRound1PackageBytes))?;
+
+        Ok(decoded)
     }
 }
 
@@ -98,7 +116,7 @@ mod sanity_checks {
             Round1PackageBytes::parse::<frost_ed25519::Ed25519Sha512>(&party1_round1_package)
                 .unwrap();
         let decoded_round1_commitment = encoded_round1_public_commitment
-            .decode::<frost_ed25519::Ed25519Sha512>()
+            .to_frost_package::<frost_ed25519::Ed25519Sha512>()
             .unwrap();
         assert!(party1_round1_package == decoded_round1_commitment);
     }

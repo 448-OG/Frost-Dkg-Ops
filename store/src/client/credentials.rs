@@ -43,7 +43,6 @@ mod sanity_checks {
 
     type FrostCredentialEd25519 = FrostCredential<frost_ed25519::Ed25519Sha512>;
 
-    #[cfg(feature = "client")]
     #[test]
     fn types_sanity() {
         use crate::FrostStorage;

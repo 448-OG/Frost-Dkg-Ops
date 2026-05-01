@@ -1,6 +1,8 @@
+use core::fmt;
 use std::borrow::Cow;
 
 use bitcode::{Decode, Encode};
+use frost_core::Ciphersuite;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "email")]
@@ -11,9 +13,7 @@ use crate::{FrostOpsError, FrostOpsResult, RandomBytes};
 /// The `seed` can reconstruct the frost_identifier and is useful in keeping
 /// the bytes sent over a network small instead of sending the FROST Identifier
 /// together with the seed.
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
-)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop)]
 pub struct FrostCredentialSeed(Vec<u8>);
 
 impl FrostCredentialSeed {
@@ -36,7 +36,7 @@ impl FrostCredentialSeed {
 
     pub fn new_anonymous() -> FrostOpsResult<Self> {
         let bytes = RandomBytes::<32>::generate();
-        let seed = faster_hex::hex_string_upper(bytes.expose().as_slice());
+        let seed = faster_hex::hex_string_upper(bytes?.expose().as_slice());
 
         Self::new(FrostCredentialType::Anonymous, seed)
     }
@@ -87,6 +87,10 @@ impl FrostCredentialSeed {
             .into()
     }
 
+    pub fn frost_identifier<C: Ciphersuite>(&self) -> FrostOpsResult<frost_core::Identifier<C>> {
+        Ok(frost_core::Identifier::derive(self.seed_bytes())?)
+    }
+
     pub fn seed(&self) -> Cow<'_, str> {
         // Not Expected to be `UNINITIALIZED` because length checks are performed on creating new and the seed must impl `ToString`
         let parsed = core::str::from_utf8(self.seed_bytes()).unwrap_or("UNINITIALIZED");
@@ -105,6 +109,14 @@ impl FrostCredentialSeed {
 
     pub fn encode(&self) -> Vec<u8> {
         bitcode::encode(self)
+    }
+}
+
+impl fmt::Debug for FrostCredentialSeed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FrostCredentialSeed")
+            .field(&faster_hex::hex_string_upper(&self.0))
+            .finish()
     }
 }
 

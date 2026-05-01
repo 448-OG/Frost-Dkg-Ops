@@ -1,3 +1,5 @@
+use core::fmt;
+
 use bitcode::{Decode, Encode};
 use hpke_rs::hpke_types::{AeadAlgorithm, KdfAlgorithm, KemAlgorithm};
 use hpke_rs::{
@@ -6,9 +8,9 @@ use hpke_rs::{
 use hpke_rs_rust_crypto::HpkeRustCrypto;
 use zeroize::Zeroize;
 
-use crate::{FrostOpsError, FrostOpsResult};
+use crate::{Blake3HashBytes, FrostMessageEnvelope, FrostOpsError, FrostOpsResult, TransmitType};
 
-#[derive(Debug, Clone, Hash, Default, PartialEq, Eq, PartialOrd, Ord, Zeroize, Encode, Decode)]
+#[derive(Clone, Hash, Default, PartialEq, Eq, PartialOrd, Ord, Zeroize, Encode, Decode)]
 pub struct EphemeralClientDeviceVerifyingKey(pub Vec<u8>);
 
 impl EphemeralClientDeviceVerifyingKey {
@@ -21,11 +23,40 @@ impl EphemeralClientDeviceVerifyingKey {
     }
 }
 
+impl fmt::Debug for EphemeralClientDeviceVerifyingKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("EphemeralClientDeviceVerifyingKey")
+            .field(&faster_hex::hex_string_upper(&self.0))
+            .finish()
+    }
+}
+
+#[derive(Clone, Hash, Default, PartialEq, Eq, PartialOrd, Ord, Zeroize, Encode, Decode)]
+pub struct HeEphemeralVerifyingKey(pub Vec<u8>);
+
+impl HeEphemeralVerifyingKey {
+    pub fn new(hpke_verifying_key: ClientDeviceVerifyingKey) -> Self {
+        Self(hpke_verifying_key.as_slice().to_vec())
+    }
+
+    pub fn from_bytes(self) -> ClientDeviceVerifyingKey {
+        ClientDeviceVerifyingKey::new(self.0)
+    }
+}
+
+impl fmt::Debug for HeEphemeralVerifyingKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("HeEphemeralVerifyingKey")
+            .field(&faster_hex::hex_string_upper(&self.0))
+            .finish()
+    }
+}
+
 /// Ephemeral Client Device Hybrid Encryption Outputs
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Zeroize, Encode, Decode)]
+#[derive(Default, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Zeroize, Encode, Decode)]
 pub struct EphemeralClientDeviceHeOutputs {
     pub sender_static_verifying_key: EphemeralClientDeviceVerifyingKey,
-    pub sender_ephemeral_public_key: EphemeralClientDeviceVerifyingKey,
+    pub sender_ephemeral_verifying_key: HeEphemeralVerifyingKey,
     pub ciphertext: Vec<u8>,
 }
 
@@ -33,16 +64,32 @@ impl EphemeralClientDeviceHeOutputs {
     pub fn new(sender_static_verifying_key: EphemeralClientDeviceVerifyingKey) -> Self {
         Self {
             sender_static_verifying_key,
-            sender_ephemeral_public_key: EphemeralClientDeviceVerifyingKey::default(),
+            sender_ephemeral_verifying_key: HeEphemeralVerifyingKey::default(),
             ciphertext: Vec::default(),
         }
     }
-    pub fn sender_ephemeral_public_key(&self) -> &[u8] {
-        self.sender_ephemeral_public_key.0.as_slice()
+    pub fn sender_ephemeral_verifying_key(&self) -> &HeEphemeralVerifyingKey {
+        &self.sender_ephemeral_verifying_key
     }
 
     pub fn ciphertext(&self) -> &[u8] {
         self.ciphertext.as_slice()
+    }
+}
+
+impl fmt::Debug for EphemeralClientDeviceHeOutputs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EphemeralClientDeviceHeOutputs")
+            .field(
+                "sender_static_verifying_key",
+                &self.sender_static_verifying_key,
+            )
+            .field(
+                "sender_ephemeral_verifying_key",
+                &self.sender_ephemeral_verifying_key,
+            )
+            .field("ciphertext", &Blake3HashBytes::new(self.ciphertext()))
+            .finish()
     }
 }
 
@@ -127,30 +174,67 @@ impl EphemeralClientDeviceKeypair {
         let ciphertext = sender_ctx.seal(Self::AAD_BYTES, payload.as_ref())?;
 
         Ok(EphemeralClientDeviceHeOutputs {
-            sender_ephemeral_public_key: EphemeralClientDeviceVerifyingKey(ephemeral_public_key),
+            sender_ephemeral_verifying_key: HeEphemeralVerifyingKey(ephemeral_public_key),
             sender_static_verifying_key,
             ciphertext,
         })
     }
 
-    pub fn decode_he_outputs(
-        self,
-        outputs: EphemeralClientDeviceHeOutputs,
-    ) -> FrostOpsResult<Vec<u8>> {
+    pub fn decode_he_outputs(self, envelope: FrostMessageEnvelope) -> FrostOpsResult<Vec<u8>> {
+        if envelope.transmission_type() != TransmitType::Unicast {
+            return Err(FrostOpsError::InvalidTransmission {
+                expected: TransmitType::Unicast,
+                current: envelope.transmission_type(),
+            });
+        }
+
         let hpke = Self::hpke();
 
         let (secret_key, _) = self.into_secret_key()?;
 
+        let envelope_binding_hash = envelope.binding_hash().to_hash();
+
+        let sender_ephemeral_verifying_key = envelope.sender_he_verifying_key();
+        let sender_static_verifying_key = envelope.sender_static_verifying_key();
+
         let mut receiver_ctx = hpke.setup_receiver(
-            &outputs.sender_ephemeral_public_key.0,
+            &sender_ephemeral_verifying_key.0,
             &secret_key,
             Self::INFO_BYTES,
             None,
             None,
-            Some(&outputs.sender_static_verifying_key.from_bytes()), // <-- sender static public key
+            Some(&sender_static_verifying_key.clone().from_bytes()), // <-- sender static public key
         )?;
 
-        Ok(receiver_ctx.open(Self::AAD_BYTES, &outputs.ciphertext)?)
+        let decoded_payload =
+            receiver_ctx.open(Self::AAD_BYTES, &envelope.he_outputs().ciphertext)?;
+        let computed_from_decode = Blake3HashBytes::from_slice(&decoded_payload)?.to_hash();
+
+        if envelope_binding_hash != computed_from_decode {
+            return Err(FrostOpsError::BindingHashMismatch);
+        }
+
+        Ok(decoded_payload[32..].to_vec())
+    }
+
+    pub fn decode_empty_he_outputs(envelope: FrostMessageEnvelope) -> FrostOpsResult<Vec<u8>> {
+        let envelope_binding_hash = envelope.binding_hash().to_hash();
+
+        if !envelope.sender_he_verifying_key().0.is_empty()
+            || envelope.sender_static_verifying_key().0.is_empty()
+            || envelope.recipient_credential_seed().is_some()
+        {
+            return Err(FrostOpsError::InvalidPayloadForEmptyEnvelope);
+        }
+
+        let payload = envelope.he_outputs().ciphertext().to_vec();
+        let computed_from_decode = Blake3HashBytes::from_slice(&payload)?.to_hash();
+
+        if envelope_binding_hash != computed_from_decode {
+            return Err(FrostOpsError::BindingHashMismatch);
+        }
+
+        Ok(payload[32..].to_vec())
     }
 }
 
@@ -165,3 +249,12 @@ impl PartialEq for EphemeralClientDeviceKeypair {
 }
 
 impl Eq for EphemeralClientDeviceKeypair {}
+
+impl fmt::Debug for EphemeralClientDeviceKeypair {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EphemeralClientDeviceKeypair")
+            .field("secret_key", &"[REDACTED]")
+            .field("verifying_key", &self.verifying_key)
+            .finish()
+    }
+}

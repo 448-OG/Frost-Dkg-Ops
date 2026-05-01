@@ -12,9 +12,6 @@ categories.workspace = true
 keywords.workspace = true
 
 [features]
-default = ["client", "client_storage"]
-client_storage = ["dep:redb"]
-client = []
 
 [dependencies]
 frost-dkg-types.workspace = true
@@ -30,21 +27,18 @@ bitcode = { workspace = true, features = ["serde"] }
 zeroize = { workspace = true }
 thiserror = { workspace = true, default-features = false }
 faster-hex.workspace = true
-rand_chacha.workspace = true
 subtle.workspace = true
-email_address = { version = "0.2.9", default-features = false }
+email_address.workspace = true
 rand.workspace = true
 blake3.workspace = true
-curve25519-dalek.workspace = true
-ed25519-dalek = "2.2.0"
-async-dup = "1.2.4"
-async-lock = "3.4.2"
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 zeroize = { workspace = true, features = ["aarch64", "simd"] }
 
 [dev-dependencies]
+async-dup.workspace = true
+async-lock.workspace = true
 frost-ed25519 = { workspace = true, default-features = false, features = [
     "serialization",
 ] }
-smol = "2.0.2"
+smol = "=2.0.2"

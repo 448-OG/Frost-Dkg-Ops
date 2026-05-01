@@ -28,6 +28,7 @@ zeroize = { workspace = true }
 thiserror = { workspace = true, default-features = false }
 faster-hex.workspace = true
 rand_chacha.workspace = true
+getrandom.workspace = true
 subtle.workspace = true
 email_address = { workspace = true, optional = true }
 tai64.workspace = true
@@ -36,6 +37,9 @@ blake3.workspace = true
 hpke-rs = { version = "=0.6.1", features = ["rustcrypto", "serialization"] }
 hpke-rs-crypto = "=0.6.1"
 hpke-rs-rust-crypto = "=0.6.1"
+fqdn.workspace = true
+humantime.workspace = true
+bs58.workspace = true
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 zeroize = { workspace = true, features = ["aarch64", "simd"] }

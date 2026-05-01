@@ -12,14 +12,10 @@ categories.workspace = true
 keywords.workspace = true
 
 [features]
-default = ["client"]
-relay = ["dep:fjall"]
-client = ["dep:redb"]
 
 [dependencies]
 frost-dkg-types.workspace = true
-fjall = { workspace = true, optional = true }
-redb = { workspace = true, optional = true }
+redb.workspace = true
 camino.workspace = true
 blocking.workspace = true
 async-dup.workspace = true
