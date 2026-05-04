@@ -1,5 +1,5 @@
 use frost_core::Ciphersuite;
-use frost_dkg_types::{FrostCredential, FrostOpsResult};
+use frost_dkg_types::{FrostCredentialSeed, FrostOpsResult};
 use redb::TableDefinition;
 
 use crate::FrostStorage;
@@ -9,10 +9,10 @@ impl FrostStorage {
     const FROST_CREDENTIALS: TableDefinition<'static, &[u8], Vec<u8>> =
         TableDefinition::new("FrostCredentials");
 
-    pub async fn set_credential<C: Ciphersuite>(
+    pub async fn set_credential(
         &self,
         org_domain: &str,
-        credential: &FrostCredential<C>,
+        credential: &FrostCredentialSeed,
     ) -> FrostOpsResult<()> {
         let credential_bytes = credential.encode();
 
@@ -23,10 +23,10 @@ impl FrostStorage {
     pub async fn get_credential<C: Ciphersuite>(
         &self,
         org_domain: &str,
-    ) -> FrostOpsResult<Option<FrostCredential<C>>> {
+    ) -> FrostOpsResult<Option<FrostCredentialSeed>> {
         self.get_credential_bytes(org_domain)
             .await?
-            .map(|credential_bytes| FrostCredential::<C>::decode(&credential_bytes))
+            .map(|credential_bytes| FrostCredentialSeed::decode(&credential_bytes))
             .transpose()
     }
 
@@ -37,11 +37,9 @@ impl FrostStorage {
 
 #[cfg(test)]
 mod sanity_checks {
-    use frost_dkg_types::FrostCredential;
+    use frost_dkg_types::FrostCredentialSeed;
 
     use crate::test_utils::db_ops::frost_credentials_db_path;
-
-    type FrostCredentialEd25519 = FrostCredential<frost_ed25519::Ed25519Sha512>;
 
     #[test]
     fn types_sanity() {
@@ -53,7 +51,7 @@ mod sanity_checks {
             let org_domain = "example.com";
             let party1 = "foo@example.com";
 
-            let party1_credential = FrostCredentialEd25519::new_with_email(party1).unwrap();
+            let party1_credential = FrostCredentialSeed::new_with_email(party1).unwrap();
 
             let db_path = frost_credentials_db_path();
 

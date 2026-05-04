@@ -6,26 +6,6 @@ use crate::{
     HeEphemeralVerifyingKey, Tai64NTimestamp, TransmitType,
 };
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Hash)]
-#[repr(u8)]
-pub enum ParticipantOperation {
-    /// Registers a participant locally for Key Agreement
-    /// and automatically adds round1 data
-    DkgRound1 = 0,
-    DkgRound2 = 1,
-    Ignore = 2,
-}
-
-impl From<u8> for ParticipantOperation {
-    fn from(discriminant: u8) -> Self {
-        match discriminant {
-            0 => Self::DkgRound1,
-            1 => Self::DkgRound2,
-            _ => Self::Ignore,
-        }
-    }
-}
-
 // Message meant for the participants in a permissioned network
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Hash)]
 pub struct FrostMessageEnvelope {

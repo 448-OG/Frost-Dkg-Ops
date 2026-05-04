@@ -1,6 +1,6 @@
 use bitcode::{Decode, Encode};
 
-use crate::FrostCredentialSeed;
+use crate::{AsymmetricVerifyingKeyBytes, FrostCredentialSeed};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Encode, Decode)]
 pub enum FrostDkgState {
@@ -38,10 +38,19 @@ impl Default for MinMaxParticipants {
 }
 
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode)]
-pub struct DkgParticipants(pub Vec<FrostCredentialSeed>);
+pub struct Round1Participants(pub Vec<FrostCredentialSeed>);
 
-impl DkgParticipants {
+impl Round1Participants {
     pub fn is_valid_participant(&self, credential_seed: &FrostCredentialSeed) -> bool {
         self.0.iter().any(|stored| stored == credential_seed)
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode)]
+pub struct FinalizedParticipants(pub Vec<(FrostCredentialSeed, AsymmetricVerifyingKeyBytes)>);
+
+impl FinalizedParticipants {
+    pub fn is_valid_participant(&self, credential_seed: &FrostCredentialSeed) -> bool {
+        self.0.iter().any(|stored| &stored.0 == credential_seed)
     }
 }
