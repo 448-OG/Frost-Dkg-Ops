@@ -17,13 +17,13 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build frost-dkg-ops crate with default features
-      run: cargo build -p frost-dkg-ops --verbose
+      run: cargo build -p frost-dkg-ops --all-features --verbose
 
     - name: Build frost-dkg-ops crate with no default features
       run: cargo build -p frost-dkg-ops --no-default-features --verbose
       
     - name: Rust frost-dkg-ops crate tests with default features
-      run: cargo test -p frost-dkg-ops --verbose
+      run: cargo test -p frost-dkg-ops --all-features  --verbose
 
     - name: Build frost-dkg-ops crate with no default features
-      run: cargo test -p frost-dkg-ops --no-default-features
+      run: cargo test -p frost-dkg-ops --all-features  --no-default-features
