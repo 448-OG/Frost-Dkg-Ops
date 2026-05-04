@@ -1,25 +1,12 @@
 use frost_core::Ciphersuite;
 use frost_dkg_types::{
-    DkgParticipants, EphemeralClientDeviceKeypair, EphemeralClientDeviceVerifyingKey,
-    FrostCredential, FrostCredentialSeed, FrostDkgState, FrostOpsResult, FrostRelayMessageEnvelope,
-    FrostRoundPackage, MinMaxParticipants, SldTld,
+    AsymmetricKeypairBytes, AsymmetricVerifyingKeyBytes, EphemeralClientDeviceKeypair,
+    EphemeralClientDeviceVerifyingKey, FinalizedParticipants, FrostCredentialSeed, FrostDkgState,
+    FrostOpsResult, FrostRelayMessageEnvelope, FrostRoundPackage, MinMaxParticipants,
+    Round1Participants, SldTld,
     finalized::{FrostKeyPackageBytes, FrostPublicKeyPackage},
     round1, round2,
 };
-
-pub trait DkgRoundKey {
-    /// The DKG Rounds are `sld_tld || HashedFrostCredential` allowing storage
-    /// of all round1 fields in all organizations easy while allowing
-    /// scan for get and remove
-    fn rounds_key(&self, sld_tld: &str, credential_seed: &FrostCredentialSeed) -> Vec<u8> {
-        let mut key = Vec::<u8>::default();
-
-        key.extend_from_slice(blake3::hash(sld_tld.as_bytes()).as_slice());
-        key.extend_from_slice(credential_seed.as_bytes());
-
-        key
-    }
-}
 
 pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
     fn init() -> impl Future<Output = FrostOpsResult<Self>>;
@@ -46,16 +33,27 @@ pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
         state: FrostDkgState,
     ) -> impl Future<Output = FrostOpsResult<()>>;
 
+    fn get_asymmetric_keypair(
+        &self,
+        sld_tld: &SldTld,
+    ) -> impl Future<Output = FrostOpsResult<AsymmetricKeypairBytes>>;
+
+    fn get_asymmetric_verifying_key(
+        &self,
+        sld_tld: &SldTld,
+    ) -> impl Future<Output = FrostOpsResult<AsymmetricVerifyingKeyBytes>>;
+
     fn get_credential(
         &self,
         sld_tld: &SldTld,
-    ) -> impl Future<Output = FrostOpsResult<Option<FrostCredential<C>>>>;
+    ) -> impl Future<Output = FrostOpsResult<Option<FrostCredentialSeed>>>;
 
     fn set_credential(
         &self,
         sld_tld: &SldTld,
-        credential: FrostCredential<C>,
+        credential: FrostCredentialSeed,
         new_state: FrostDkgState,
+        avkp: AsymmetricKeypairBytes,
     ) -> impl Future<Output = FrostOpsResult<()>>;
 
     fn set_dkg_min_max_participants(
@@ -73,7 +71,7 @@ pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
     fn get_participants(
         &self,
         sld_tld: &SldTld,
-    ) -> impl Future<Output = FrostOpsResult<DkgParticipants>>;
+    ) -> impl Future<Output = FrostOpsResult<FinalizedParticipants>>;
 
     fn set_ecdk(
         &self,
@@ -109,7 +107,7 @@ pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
             FrostDkgState,
             Vec<FrostRoundPackage<round1::Round1PackageBytes>>,
             EphemeralClientDeviceKeypair,
-            FrostCredential<C>,
+            FrostCredentialSeed,
             MinMaxParticipants,
         )>,
     >;
@@ -123,6 +121,7 @@ pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
             FrostDkgState,
             Vec<FrostRoundPackage<round1::Round1PackageBytes>>,
             EphemeralClientDeviceKeypair,
+            AsymmetricVerifyingKeyBytes,
             round1::Round1SecretBytes,
             FrostCredentialSeed,
         )>,
@@ -138,7 +137,7 @@ pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
             FrostCredentialSeed,
             Vec<FrostRoundPackage<round2::Round2PackageBytes>>,
             EphemeralClientDeviceKeypair,
-            DkgParticipants,
+            Round1Participants,
             MinMaxParticipants,
         )>,
     >;
@@ -150,7 +149,7 @@ pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
         Output = FrostOpsResult<(
             Option<round1::Round1PackageBytes>,
             EphemeralClientDeviceVerifyingKey,
-            FrostCredential<C>,
+            FrostCredentialSeed,
             MinMaxParticipants,
         )>,
     >;
@@ -193,7 +192,7 @@ pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
         state: FrostDkgState,
         key_package: FrostKeyPackageBytes,
         public_package: FrostPublicKeyPackage,
-        participants: DkgParticipants,
+        participants: FinalizedParticipants,
     ) -> impl Future<Output = FrostOpsResult<()>>;
 
     fn get_finalized_packages(

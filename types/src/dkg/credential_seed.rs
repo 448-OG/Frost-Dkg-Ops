@@ -110,6 +110,10 @@ impl FrostCredentialSeed {
     pub fn encode(&self) -> Vec<u8> {
         bitcode::encode(self)
     }
+
+    pub fn decode(bytes: &[u8]) -> FrostOpsResult<Self> {
+        bitcode::decode(bytes).or(Err(FrostOpsError::InvalidFrostCredentialSeed))
+    }
 }
 
 impl fmt::Debug for FrostCredentialSeed {

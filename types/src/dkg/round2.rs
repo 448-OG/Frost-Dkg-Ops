@@ -2,7 +2,7 @@ use bitcode::{Decode, Encode};
 use frost_core::{Ciphersuite, keys::dkg::round2};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{FrostOpsError, FrostOpsResult, FrostProtocolError};
+use crate::{AsymmetricVerifyingKeyBytes, FrostOpsError, FrostOpsResult, FrostProtocolError};
 
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash, ZeroizeOnDrop,
@@ -26,15 +26,19 @@ impl Round2SecretBytes {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Hash)]
-pub struct Round2PackageBytes(Vec<u8>);
+pub struct Round2PackageBytes {
+    pub bytes: Vec<u8>,
+    pub avk: AsymmetricVerifyingKeyBytes,
+}
 
 impl Round2PackageBytes {
     pub fn parse<C: Ciphersuite>(
         package: &frost_core::keys::dkg::round2::Package<C>,
+        avk: AsymmetricVerifyingKeyBytes,
     ) -> FrostOpsResult<Self> {
-        let encoded = package.serialize()?;
+        let bytes = package.serialize()?;
 
-        Ok(Self(encoded))
+        Ok(Self { bytes, avk })
     }
 
     pub fn encode(&self) -> Vec<u8> {
@@ -49,7 +53,11 @@ impl Round2PackageBytes {
         &self,
     ) -> FrostOpsResult<frost_core::keys::dkg::round2::Package<C>> {
         Ok(frost_core::keys::dkg::round2::Package::<C>::deserialize(
-            &self.0,
+            &self.bytes,
         )?)
+    }
+
+    pub fn asymmetric_verifying_key(&self) -> AsymmetricVerifyingKeyBytes {
+        self.avk
     }
 }

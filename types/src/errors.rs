@@ -1,6 +1,5 @@
 use bitcode::{Decode, Encode};
 
-#[cfg(feature = "client")]
 use crate::FrostDkgState;
 use crate::TransmitType;
 
@@ -99,6 +98,18 @@ pub enum FrostOpsError {
     InvalidRound2PackageBytes,
     #[error("Unable to map the frost_core::Identifier to a FrostCredentialSeed. Culprit: `{0}`")]
     UnableToGetTheIdentifierMapping(String),
+    #[error(
+        "The FROST message to sign metadata is corrupted. Unable to decode bytes to `FrostSigningMessageMetadata`."
+    )]
+    UnableToDecodeFrostSigningMessageMetadata,
+    #[error(
+        "The `FrostCredentialSeed` for participant `{0}` was not found in the list of signers, you need to add the `FrostCredentialSeed` when signaling to participants to sign a message"
+    )]
+    SignerNotFound(String),
+    #[error("Unable to sign the payload")]
+    UnableToSignPayload,
+    #[error("Unable to convert the bytes into the `AsymmetricVerifyingKey`")]
+    InvalidAsymmetricVerifyingKeyBytes,
 }
 
 #[derive(Debug, PartialEq, thiserror::Error, Clone, Encode, Decode)]
@@ -434,8 +445,6 @@ pub enum FrostProtocolError {
     MessageTooBig,
     #[error("The minimum signers supported is 2")]
     MinimumSignersMustBe2OrMore,
-    #[error("The maximum signers must be more or equal to minimum signers")]
-    MinimumSignersMoreThanMaximumSigners,
     #[error(
         "Round1 public package has not been set, cannot create round2 package without round1 public package"
     )]

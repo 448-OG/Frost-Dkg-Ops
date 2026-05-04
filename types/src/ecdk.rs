@@ -8,7 +8,14 @@ use hpke_rs::{
 use hpke_rs_rust_crypto::HpkeRustCrypto;
 use zeroize::Zeroize;
 
-use crate::{Blake3HashBytes, FrostMessageEnvelope, FrostOpsError, FrostOpsResult, TransmitType};
+use ed25519_dalek::{
+    Signature as AsymmetricSignature, SigningKey as AsymmetricSigningKey,
+    VerifyingKey as AsymmetricVerifyingKey,
+};
+
+use crate::{
+    Blake3HashBytes, FrostMessageEnvelope, FrostOpsError, FrostOpsResult, RandomBytes, TransmitType,
+};
 
 #[derive(Clone, Hash, Default, PartialEq, Eq, PartialOrd, Ord, Zeroize, Encode, Decode)]
 pub struct EphemeralClientDeviceVerifyingKey(pub Vec<u8>);
@@ -255,6 +262,136 @@ impl fmt::Debug for EphemeralClientDeviceKeypair {
         f.debug_struct("EphemeralClientDeviceKeypair")
             .field("secret_key", &"[REDACTED]")
             .field("verifying_key", &self.verifying_key)
+            .finish()
+    }
+}
+
+// This is used when you want multiple parties to verify data
+// without incurring the cost of HPKE
+//
+
+#[derive(Clone, Zeroize, Encode, Decode)]
+pub struct AsymmetricKeypairBytes {
+    signing_key: [u8; 32],
+    pub verifying_key: AsymmetricVerifyingKeyBytes,
+}
+
+impl AsymmetricKeypairBytes {
+    pub fn new() -> FrostOpsResult<Self> {
+        let secret_key = RandomBytes::<32>::generate()?;
+
+        Ok(Self::from_signing_key_bytes(secret_key.expose()))
+    }
+
+    pub fn from_signing_key_bytes(signing_key_bytes: &[u8; 32]) -> Self {
+        let signing_key = AsymmetricSigningKey::from_bytes(signing_key_bytes);
+        let verifying_key = signing_key.verifying_key();
+
+        Self {
+            signing_key: signing_key.to_bytes(),
+            verifying_key: AsymmetricVerifyingKeyBytes(verifying_key.to_bytes()),
+        }
+    }
+
+    pub fn signing_key(&self) -> AsymmetricSigningKey {
+        AsymmetricSigningKey::from_bytes(&self.signing_key)
+    }
+
+    pub fn verifying_key_encodable(&self) -> AsymmetricVerifyingKeyBytes {
+        self.verifying_key
+    }
+
+    pub fn verifying_key(&self) -> AsymmetricVerifyingKey {
+        self.signing_key().verifying_key()
+    }
+
+    pub fn sign(&self, payload: impl AsRef<[u8]>) -> FrostOpsResult<AsymmetricSignature> {
+        use ed25519_dalek::Signer;
+
+        self.signing_key()
+            .try_sign(payload.as_ref())
+            .or(Err(FrostOpsError::UnableToSignPayload))
+    }
+
+    pub fn sign_and_return_encodable(
+        &self,
+        payload: impl AsRef<[u8]>,
+    ) -> FrostOpsResult<AsymmetricSignatureBytes> {
+        self.sign(payload)
+            .map(|value| AsymmetricSignatureBytes(value.to_bytes()))
+    }
+
+    pub fn sign_and_return_encodable_and_verifying_key(
+        &self,
+        payload: impl AsRef<[u8]>,
+    ) -> FrostOpsResult<(AsymmetricVerifyingKeyBytes, AsymmetricSignatureBytes)> {
+        self.sign(payload).map(|value| {
+            (
+                self.verifying_key_encodable(),
+                AsymmetricSignatureBytes(value.to_bytes()),
+            )
+        })
+    }
+}
+
+impl fmt::Debug for AsymmetricKeypairBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AsymmetricKeypairBytes")
+            .field("signing_key", &"[REDACTED]")
+            .field("verifying_key", &self.verifying_key)
+            .finish()
+    }
+}
+
+impl PartialEq for AsymmetricKeypairBytes {
+    fn eq(&self, other: &Self) -> bool {
+        use subtle::ConstantTimeEq;
+
+        let signing_key_cmp: bool = self.signing_key.ct_eq(other.signing_key.as_slice()).into();
+
+        signing_key_cmp && self.verifying_key == other.verifying_key
+    }
+}
+
+impl Eq for AsymmetricKeypairBytes {}
+
+#[derive(Clone, Copy, Hash, Default, PartialEq, Eq, PartialOrd, Ord, Zeroize, Encode, Decode)]
+pub struct AsymmetricVerifyingKeyBytes(pub [u8; 32]);
+
+impl AsymmetricVerifyingKeyBytes {
+    pub fn from_bytes(&self) -> FrostOpsResult<AsymmetricVerifyingKey> {
+        AsymmetricVerifyingKey::from_bytes(&self.0)
+            .or(Err(FrostOpsError::InvalidAsymmetricVerifyingKeyBytes))
+    }
+}
+
+impl fmt::Debug for AsymmetricVerifyingKeyBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("AsymmetricVerifyingKeyBytes")
+            .field(&faster_hex::hex_string_upper(&self.0))
+            .finish()
+    }
+}
+
+#[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Zeroize, Encode, Decode)]
+pub struct AsymmetricSignatureBytes(pub [u8; 64]);
+
+impl AsymmetricSignatureBytes {
+    pub fn from_bytes(&self) -> AsymmetricSignature {
+        AsymmetricSignature::from_bytes(&self.0)
+    }
+}
+
+impl Default for AsymmetricSignatureBytes {
+    fn default() -> Self {
+        Self([0u8; 64])
+    }
+}
+
+impl fmt::Debug for AsymmetricSignatureBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("AsymmetricSignatureBytes")
+            .field(&faster_hex::hex_string_upper(&self.0))
             .finish()
     }
 }
