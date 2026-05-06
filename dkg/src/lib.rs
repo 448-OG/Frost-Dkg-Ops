@@ -7,22 +7,24 @@ pub use storage::*;
 mod channel;
 pub use channel::*;
 
+mod signing;
+pub use signing::*;
+
 #[cfg(test)]
 mod sanity_checks {
     use std::{
-        collections::{BTreeMap, HashMap, HashSet},
-        marker::PhantomData,
+        collections::{BTreeMap, HashMap, HashSet, VecDeque},
         sync::LazyLock,
     };
 
     use async_dup::Arc;
     use async_lock::{Mutex, RwLock};
-    use frost_core::Ciphersuite;
     use frost_dkg_types::{
         AsymmetricKeypairBytes, AsymmetricVerifyingKeyBytes, Blake3HashBytes,
         EphemeralClientDeviceKeypair, FinalizedParticipants, FrostCredentialSeed, FrostDkgState,
         FrostMessageEnvelope, FrostOpsError, FrostOpsResult, FrostRelayMessageEnvelope,
-        FrostRoundPackage, MinMaxParticipants, Round1Participants, SldTld,
+        FrostRoundPackage, FrostSigningEventInfo, FrostSigningEventKey, MinMaxParticipants,
+        Round1Participants, SldTld, Tai64NTimestamp,
         finalized::{FrostKeyPackageBytes, FrostPublicKeyPackage},
         round1::{self, Round1PackageBytes},
         round2,
@@ -30,11 +32,8 @@ mod sanity_checks {
 
     use crate::{DkgStateHandler, FrostAuthenticatedChannel, FrostDkgStorage};
 
-    type FrostEd25519DkgHandler = DkgStateHandler<
-        frost_ed25519::Ed25519Sha512,
-        Arc<RwLock<ClientStorage>>,
-        RelayMemNetwork<frost_ed25519::Ed25519Sha512>,
-    >;
+    type FrostEd25519DkgHandler =
+        DkgStateHandler<frost_ed25519::Ed25519Sha512, Arc<RwLock<ClientStorage>>, RelayMemNetwork>;
 
     static REMOTE_SERVER: LazyLock<Mutex<RemoteServer>> = LazyLock::new(|| {
         let sld_tld = SldTld::new("example.com").unwrap();
@@ -327,15 +326,17 @@ mod sanity_checks {
         received_round1_packages: BTreeMap<Vec<u8>, FrostRoundPackage<round1::Round1PackageBytes>>,
         // Received from each participant using encrypted authenticated channel
         received_round2_packages: Vec<FrostRoundPackage<round2::Round2PackageBytes>>,
+        events: BTreeMap<[u8; 44], FrostSigningEventInfo>,
     }
 
-    impl<C: Ciphersuite> FrostDkgStorage<C> for Arc<RwLock<ClientStorage>> {
+    impl FrostDkgStorage for Arc<RwLock<ClientStorage>> {
         // TODO test when state already initialized
         async fn init() -> FrostOpsResult<Self> {
             let init = ClientStorage {
                 participant_info: HashMap::default(),
                 received_round1_packages: BTreeMap::default(),
                 received_round2_packages: Vec::default(),
+                events: BTreeMap::default(),
             };
 
             Ok(Arc::new(RwLock::new(init)))
@@ -803,8 +804,11 @@ mod sanity_checks {
             round2::Round2SecretBytes,
             Vec<FrostRoundPackage<round1::Round1PackageBytes>>,
             Vec<FrostRoundPackage<round2::Round2PackageBytes>>,
+            FrostCredentialSeed,
+            AsymmetricKeypairBytes,
+            MinMaxParticipants,
         )> {
-            let (state, round2_secret) = self
+            let (state, round2_secret, credential, akp, min_max) = self
                 .read()
                 .await
                 .participant_info
@@ -812,8 +816,11 @@ mod sanity_checks {
                 .map(|value| {
                     let state = value.state;
                     let round2_secret = value.round2_secret.clone().unwrap();
+                    let min_max = value.min_max.unwrap();
+                    let akp = value.avpk.clone();
+                    let credential = value.credential.clone().unwrap();
 
-                    (state, round2_secret)
+                    (state, round2_secret, credential, akp, min_max)
                 })
                 .unwrap();
 
@@ -827,7 +834,15 @@ mod sanity_checks {
 
             let round2_packages = self.read().await.received_round2_packages.clone();
 
-            Ok((state, round2_secret, round1_packages, round2_packages))
+            Ok((
+                state,
+                round2_secret,
+                round1_packages,
+                round2_packages,
+                credential,
+                akp,
+                min_max,
+            ))
         }
 
         async fn set_part3_packages(
@@ -921,13 +936,196 @@ mod sanity_checks {
                 .map(|value| value.avpk.verifying_key_encodable())
                 .unwrap())
         }
+
+        async fn check_if_signing_event_exists(
+            &self,
+            sld_tld: Blake3HashBytes,
+            event_info: &frost_dkg_types::FrostSigningEvent,
+        ) -> FrostOpsResult<(bool, FrostKeyPackageBytes)> {
+            let key_package = self
+                .read()
+                .await
+                .participant_info
+                .get(&sld_tld)
+                .map(|value| value.finalized_key_package.clone())
+                .flatten()
+                .unwrap();
+
+            let event_exists = self
+                .read()
+                .await
+                .events
+                .get(event_info.to_storage_key().as_slice())
+                .is_some();
+
+            Ok((event_exists, key_package))
+        }
+
+        async fn get_requirements_to_verify_signature_shares(
+            &self,
+            sld_tld_hash: &Blake3HashBytes,
+            event_key: FrostSigningEventKey,
+        ) -> FrostOpsResult<(
+            FrostCredentialSeed,
+            FrostSigningEventInfo,
+            FrostKeyPackageBytes,
+            FrostPublicKeyPackage,
+            FinalizedParticipants,
+            AsymmetricKeypairBytes,
+        )> {
+            let (my_credential, key_package, public_package, finalized_participants, akp) = self
+                .read()
+                .await
+                .participant_info
+                .get(sld_tld_hash)
+                .map(|value| {
+                    let my_credential = value.credential.clone().unwrap();
+                    let key_package = value.finalized_key_package.clone().unwrap();
+                    let public_package = value.finalized_public_package.clone().unwrap();
+                    let finalized_participants = value.participants.clone();
+                    let akp = value.avpk.clone();
+
+                    (
+                        my_credential,
+                        key_package,
+                        public_package,
+                        finalized_participants,
+                        akp,
+                    )
+                })
+                .unwrap();
+
+            let stored_event = self
+                .read()
+                .await
+                .events
+                .get(event_key.as_slice())
+                .cloned()
+                .unwrap();
+
+            Ok((
+                my_credential,
+                stored_event,
+                key_package,
+                public_package,
+                finalized_participants,
+                akp,
+            ))
+        }
+
+        async fn get_requirements_to_validate_a_received_signal(
+            &self,
+            sld_tld_hash: Blake3HashBytes,
+            event_key: FrostSigningEventKey,
+        ) -> FrostOpsResult<(
+            FrostDkgState,
+            FrostCredentialSeed,
+            FinalizedParticipants,
+            Option<FrostSigningEventInfo>,
+            MinMaxParticipants,
+            AsymmetricKeypairBytes,
+        )> {
+            let (dkg_state, my_credential, finalized_participants, min_max, akp) = self
+                .read()
+                .await
+                .participant_info
+                .get(&sld_tld_hash)
+                .map(|value| {
+                    let dkg_state = value.state;
+                    let my_credential = value.credential.clone().unwrap();
+                    let min_max = value.min_max.unwrap();
+                    let finalized_participants = value.participants.clone();
+                    let akp = value.avpk.clone();
+
+                    (
+                        dkg_state,
+                        my_credential,
+                        finalized_participants,
+                        min_max,
+                        akp,
+                    )
+                })
+                .unwrap();
+
+            let stored_event = self.read().await.events.get(event_key.as_slice()).cloned();
+
+            Ok((
+                dkg_state,
+                my_credential,
+                finalized_participants,
+                stored_event,
+                min_max,
+                akp,
+            ))
+        }
+
+        async fn get_requirements_to_verify_event(
+            &self,
+            sld_tld_hash: &Blake3HashBytes,
+            event_key: FrostSigningEventKey,
+        ) -> FrostOpsResult<(
+            FrostCredentialSeed,
+            FrostSigningEventInfo,
+            FinalizedParticipants,
+            FrostKeyPackageBytes,
+            AsymmetricKeypairBytes,
+            SldTld,
+        )> {
+            let (my_credential, finalized_participants, key_package, akp, sld_tld) = self
+                .read()
+                .await
+                .participant_info
+                .get(&sld_tld_hash)
+                .map(|value| {
+                    let my_credential = value.credential.clone().unwrap();
+                    let key_package = value.finalized_key_package.clone().unwrap();
+                    let finalized_participants = value.participants.clone();
+                    let akp = value.avpk.clone();
+                    let sld_tld = value.sld_tld.clone();
+
+                    (
+                        my_credential,
+                        finalized_participants,
+                        key_package,
+                        akp,
+                        sld_tld,
+                    )
+                })
+                .unwrap();
+
+            let stored_event = self
+                .read()
+                .await
+                .events
+                .get(event_key.as_slice())
+                .cloned()
+                .unwrap();
+
+            Ok((
+                my_credential,
+                stored_event,
+                finalized_participants,
+                key_package,
+                akp,
+                sld_tld,
+            ))
+        }
+
+        async fn set_signing_event(&self, event_info: FrostSigningEventInfo) -> FrostOpsResult<()> {
+            self.write()
+                .await
+                .events
+                .insert(event_info.to_storage_key(), event_info);
+
+            Ok(())
+        }
     }
 
-    struct RelayMemNetwork<C: Ciphersuite>(SldTld, PhantomData<C>);
+    struct RelayMemNetwork(SldTld);
 
-    impl<C: Ciphersuite> FrostAuthenticatedChannel<C> for RelayMemNetwork<C> {
+    impl FrostAuthenticatedChannel for RelayMemNetwork {
         async fn init() -> FrostOpsResult<Self> {
-            Ok(Self(SldTld::new("example.com").unwrap(), PhantomData))
+            Ok(Self(SldTld::new("example.com").unwrap()))
         }
 
         async fn fetch_min_max_participants(
@@ -1002,6 +1200,37 @@ mod sanity_checks {
                 .cloned()
                 .unwrap())
         }
+
+        async fn signal_ack(
+            &self,
+            ack: frost_dkg_types::SignalAcknowledgement,
+        ) -> FrostOpsResult<()> {
+            todo!()
+        }
+
+        async fn finalized_signing_event(
+            &self,
+            sld_tld: &SldTld,
+            finalized: frost_dkg_types::FinalizedSigningEvent,
+        ) -> FrostOpsResult<()> {
+            todo!()
+        }
+
+        async fn receive_round2_signature_shares(
+            &self,
+            event_hash: frost_dkg_types::FrostEventHash,
+            shares: Vec<frost_dkg_types::TransmitFrostRound2>,
+        ) -> FrostOpsResult<()> {
+            todo!()
+        }
+
+        async fn update_signing_event(
+            &self,
+            sld_tld: SldTld,
+            payload: frost_dkg_types::TransmitFrostRound2,
+        ) -> FrostOpsResult<()> {
+            todo!()
+        }
     }
 
     #[derive(Debug, Default)]
@@ -1011,6 +1240,7 @@ mod sanity_checks {
         participants: Vec<FrostCredentialSeed>,
         round1_dkg_messages: HashSet<FrostMessageEnvelope>,
         round2_dkg_messages: HashMap<FrostCredentialSeed, Vec<FrostMessageEnvelope>>,
+        messages: BTreeMap<FrostSigningEventKey, FrostSigningEventInfo>,
     }
 
     impl RemoteServer {

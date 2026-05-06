@@ -9,7 +9,7 @@ pub struct FrostStorage {
 }
 
 impl FrostStorage {
-    pub fn new(path: &Utf8Path) -> Result<Self, redb::Error> {
+    pub fn init(path: &Utf8Path) -> Result<Self, redb::Error> {
         let store = Arc::new(Database::create(path)?);
 
         Ok(Self { store })

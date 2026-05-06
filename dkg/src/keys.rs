@@ -16,17 +16,15 @@ use zeroize::Zeroize;
 
 use crate::{FrostAuthenticatedChannel, FrostDkgStorage};
 
-pub struct DkgStateHandler<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>> {
-    storage: S,
+pub struct DkgStateHandler<C: Ciphersuite, KV: FrostDkgStorage, N: FrostAuthenticatedChannel> {
+    storage: KV,
     channel: N,
     foo: PhantomData<C>,
 }
 
-impl<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>>
-    DkgStateHandler<C, S, N>
-{
+impl<C: Ciphersuite, KV: FrostDkgStorage, N: FrostAuthenticatedChannel> DkgStateHandler<C, KV, N> {
     pub async fn init() -> FrostOpsResult<Self> {
-        let storage = S::init().await?;
+        let storage = KV::init().await?;
         let channel = N::init().await?;
 
         Ok(Self {
@@ -34,6 +32,14 @@ impl<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>>
             channel,
             foo: PhantomData,
         })
+    }
+
+    pub fn storage(&self) -> &KV {
+        &self.storage
+    }
+
+    pub fn channel(&self) -> &N {
+        &self.channel
     }
 
     pub async fn get_state(&self, sld_tld: &SldTld) -> FrostOpsResult<FrostDkgState> {
@@ -480,10 +486,18 @@ impl<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>>
     }
 
     pub async fn finalize(&self, sld_tld: &SldTld) -> FrostOpsResult<FrostDkgState> {
-        let (mut current_state, round2_secret, round1_received_packages, round2_received_packages) =
-            self.storage
-                .get_requirements_to_perform_part3(sld_tld)
-                .await?;
+        let (
+            mut current_state,
+            round2_secret,
+            round1_received_packages,
+            round2_received_packages,
+            my_credential,
+            my_akp,
+            min_max,
+        ) = self
+            .storage
+            .get_requirements_to_perform_part3(sld_tld)
+            .await?;
 
         let expected_state = FrostDkgState::Part3;
 
@@ -540,6 +554,16 @@ impl<C: Ciphersuite, S: FrostDkgStorage<C>, N: FrostAuthenticatedChannel<C>>
         let public_package_bytes = FrostPublicKeyPackage::encode(&public_package)?;
 
         current_state = current_state.transition();
+        final_participants.push((my_credential, my_akp.verifying_key_encodable()));
+        final_participants.sort();
+        final_participants.dedup();
+
+        if min_max.max as usize != final_participants.len() {
+            return Err(FrostOpsError::TooManyParticipants {
+                max: min_max.max,
+                current: final_participants.len(),
+            });
+        }
 
         self.storage
             .set_part3_packages(

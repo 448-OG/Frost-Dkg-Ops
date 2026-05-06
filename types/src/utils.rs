@@ -15,6 +15,10 @@ impl Tai64NTimestamp {
         Self(Tai64N::now().to_bytes())
     }
 
+    pub fn new_epoch() -> Self {
+        Self(Self::epoch_timestamp().to_bytes())
+    }
+
     pub fn epoch_timestamp() -> Tai64N {
         Tai64N::UNIX_EPOCH
     }
@@ -85,6 +89,12 @@ impl Blake3HashBytes {
             .or(Err(FrostOpsError::BindingHashNot32Bytes))?;
 
         Ok(Self(to_array))
+    }
+}
+
+impl AsRef<[u8]> for Blake3HashBytes {
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
     }
 }
 

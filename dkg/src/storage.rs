@@ -1,14 +1,14 @@
-use frost_core::Ciphersuite;
 use frost_dkg_types::{
-    AsymmetricKeypairBytes, AsymmetricVerifyingKeyBytes, EphemeralClientDeviceKeypair,
-    EphemeralClientDeviceVerifyingKey, FinalizedParticipants, FrostCredentialSeed, FrostDkgState,
-    FrostOpsResult, FrostRelayMessageEnvelope, FrostRoundPackage, MinMaxParticipants,
-    Round1Participants, SldTld,
+    AsymmetricKeypairBytes, AsymmetricVerifyingKeyBytes, Blake3HashBytes,
+    EphemeralClientDeviceKeypair, EphemeralClientDeviceVerifyingKey, FinalizedParticipants,
+    FrostCredentialSeed, FrostDkgState, FrostOpsResult, FrostRelayMessageEnvelope,
+    FrostRoundPackage, FrostSigningEvent, FrostSigningEventInfo, FrostSigningEventKey,
+    MinMaxParticipants, Round1Participants, SldTld, Tai64NTimestamp,
     finalized::{FrostKeyPackageBytes, FrostPublicKeyPackage},
     round1, round2,
 };
 
-pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
+pub trait FrostDkgStorage: Sized {
     fn init() -> impl Future<Output = FrostOpsResult<Self>>;
 
     fn set_sld_tld(&self, sld_tld: SldTld) -> impl Future<Output = FrostOpsResult<()>>;
@@ -53,7 +53,7 @@ pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
         sld_tld: &SldTld,
         credential: FrostCredentialSeed,
         new_state: FrostDkgState,
-        avkp: AsymmetricKeypairBytes,
+        akp: AsymmetricKeypairBytes,
     ) -> impl Future<Output = FrostOpsResult<()>>;
 
     fn set_dkg_min_max_participants(
@@ -183,6 +183,9 @@ pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
             round2::Round2SecretBytes,
             Vec<FrostRoundPackage<round1::Round1PackageBytes>>,
             Vec<FrostRoundPackage<round2::Round2PackageBytes>>,
+            FrostCredentialSeed,
+            AsymmetricKeypairBytes,
+            MinMaxParticipants,
         )>,
     >;
 
@@ -209,4 +212,65 @@ pub trait FrostDkgStorage<C: Ciphersuite>: Sized {
         &self,
         sld_tld: &SldTld,
     ) -> impl Future<Output = FrostOpsResult<FrostPublicKeyPackage>>;
+
+    /// This timestamp is used to fetch the last signed event
+    fn get_requirements_to_validate_a_received_signal(
+        &self,
+        sld_tld: Blake3HashBytes,
+        event_key: FrostSigningEventKey,
+    ) -> impl Future<
+        Output = FrostOpsResult<(
+            FrostDkgState,
+            FrostCredentialSeed,
+            FinalizedParticipants,
+            Option<FrostSigningEventInfo>,
+            MinMaxParticipants,
+            AsymmetricKeypairBytes,
+        )>,
+    >;
+
+    /// Remember to check if the event already exists in the log.
+    /// Returns `true` if the event already exists in the log
+    fn check_if_signing_event_exists(
+        &self,
+        sld_tld: Blake3HashBytes,
+        event_info: &FrostSigningEvent,
+    ) -> impl Future<Output = FrostOpsResult<(bool, FrostKeyPackageBytes)>>;
+
+    fn set_signing_event(
+        &self,
+        event_info: FrostSigningEventInfo,
+    ) -> impl Future<Output = FrostOpsResult<()>>;
+
+    #[allow(clippy::type_complexity)]
+    fn get_requirements_to_verify_event(
+        &self,
+        sld_tld: &Blake3HashBytes,
+        event_key: FrostSigningEventKey,
+    ) -> impl Future<
+        Output = FrostOpsResult<(
+            FrostCredentialSeed,
+            FrostSigningEventInfo,
+            FinalizedParticipants,
+            FrostKeyPackageBytes,
+            AsymmetricKeypairBytes,
+            SldTld,
+        )>,
+    >;
+
+    #[allow(clippy::type_complexity)]
+    fn get_requirements_to_verify_signature_shares(
+        &self,
+        sld_tld: &Blake3HashBytes,
+        key: FrostSigningEventKey,
+    ) -> impl Future<
+        Output = FrostOpsResult<(
+            FrostCredentialSeed,
+            FrostSigningEventInfo,
+            FrostKeyPackageBytes,
+            FrostPublicKeyPackage,
+            FinalizedParticipants,
+            AsymmetricKeypairBytes,
+        )>,
+    >;
 }

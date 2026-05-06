@@ -1,10 +1,10 @@
-use frost_core::Ciphersuite;
 use frost_dkg_types::{
-    FrostCredentialSeed, FrostMessageEnvelope, FrostOpsResult, FrostRelayMessageEnvelope,
-    MinMaxParticipants, SldTld,
+    FinalizedSigningEvent, FrostCredentialSeed, FrostEventHash, FrostMessageEnvelope,
+    FrostOpsResult, FrostRelayMessageEnvelope, FrostSigningEvent, MinMaxParticipants,
+    SignalAcknowledgement, SldTld, TransmitFrostRound2,
 };
 
-pub trait FrostAuthenticatedChannel<C: Ciphersuite>: Sized {
+pub trait FrostAuthenticatedChannel: Sized {
     fn init() -> impl Future<Output = FrostOpsResult<Self>>;
 
     fn is_active_domain(&self, sld_tld: &SldTld) -> impl Future<Output = FrostOpsResult<bool>>;
@@ -38,4 +38,24 @@ pub trait FrostAuthenticatedChannel<C: Ciphersuite>: Sized {
         sld_tld: &SldTld,
         credential_seed: &FrostCredentialSeed,
     ) -> impl Future<Output = FrostOpsResult<Vec<FrostMessageEnvelope>>>;
+
+    fn signal_ack(&self, ack: SignalAcknowledgement) -> impl Future<Output = FrostOpsResult<()>>;
+
+    fn update_signing_event(
+        &self,
+        sld_tld: SldTld,
+        payload: TransmitFrostRound2,
+    ) -> impl Future<Output = FrostOpsResult<()>>;
+
+    fn receive_round2_signature_shares(
+        &self,
+        event_hash: FrostEventHash,
+        shares: Vec<TransmitFrostRound2>,
+    ) -> impl Future<Output = FrostOpsResult<()>>;
+
+    fn finalized_signing_event(
+        &self,
+        sld_tld: &SldTld,
+        finalized: FinalizedSigningEvent,
+    ) -> impl Future<Output = FrostOpsResult<()>>;
 }
