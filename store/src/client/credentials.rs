@@ -55,7 +55,7 @@ mod sanity_checks {
 
             let db_path = frost_credentials_db_path();
 
-            let storage = FrostStorage::new(db_path.as_str().into()).unwrap();
+            let storage = FrostStorage::init(db_path.as_str().into()).unwrap();
 
             storage
                 .set_credential(org_domain, &party1_credential)

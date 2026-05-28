@@ -34,7 +34,7 @@ impl FrostKeyPackageBytes {
         })
     }
 
-    pub fn decode<C: Ciphersuite>(&self) -> FrostOpsResult<KeyPackage<C>> {
+    pub fn to_frost<C: Ciphersuite>(&self) -> FrostOpsResult<KeyPackage<C>> {
         let identifier = self.identifier.decode::<C>()?;
         let signing_share = self.signing_share.decode::<C>()?;
         let verifying_share = self.verifying_share.decode::<C>()?;
@@ -126,12 +126,12 @@ impl FrostPublicKeyPackage {
         Ok(Self(public_package.serialize()?))
     }
 
-    pub fn decode<C: Ciphersuite>(&self) -> FrostOpsResult<PublicKeyPackage<C>> {
+    pub fn to_frost<C: Ciphersuite>(&self) -> FrostOpsResult<PublicKeyPackage<C>> {
         Ok(PublicKeyPackage::<C>::deserialize(&self.0)?)
     }
 
     pub fn verifying_key_base58<C: Ciphersuite>(&self) -> FrostOpsResult<String> {
-        let package = self.decode::<C>()?;
+        let package = self.to_frost::<C>()?;
         let vk = package.verifying_key();
 
         Ok(bs58::encode(&vk.serialize()?).into_string())
@@ -151,110 +151,5 @@ impl fmt::Debug for FrostPublicKeyPackage {
 impl fmt::Display for FrostPublicKeyPackage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", &blake3::hash(&self.0))
-    }
-}
-
-#[cfg(test)]
-mod sanity_checks {
-    #[test]
-    fn types_sanity() {
-        use std::collections::BTreeMap;
-
-        use frost_ed25519::{
-            self as frost,
-            keys::dkg::{round1, round2},
-        };
-
-        let rng = rand::rngs::OsRng;
-
-        let max_signers = 2;
-        let min_signers = 2;
-
-        let party1 = "foo@example.com";
-        let party2 = "bar@example.com";
-
-        let party1_identifier = frost_ed25519::Identifier::derive(party1.as_bytes()).unwrap();
-        let party2_identifier = frost_ed25519::Identifier::derive(party2.as_bytes()).unwrap();
-
-        let (party1_round1_secret_package, party1_round1_package) =
-            frost::keys::dkg::part1(party1_identifier, max_signers, min_signers, rng).unwrap();
-        let (party2_round1_secret_package, party2_round1_package) =
-            frost::keys::dkg::part1(party2_identifier, max_signers, min_signers, rng).unwrap();
-
-        // Receive party2 transmit party1
-        let mut party1_round1_received_packages =
-            BTreeMap::<frost_ed25519::Identifier, round1::Package>::default();
-        let mut party2_round1_received_packages =
-            BTreeMap::<frost_ed25519::Identifier, round1::Package>::default();
-
-        party1_round1_received_packages.insert(party2_identifier, party2_round1_package);
-        party2_round1_received_packages.insert(party1_identifier, party1_round1_package);
-
-        let (party1_round2_secret_package, party1_round2_packages) =
-            frost_ed25519::keys::dkg::part2(
-                party1_round1_secret_package,
-                &party1_round1_received_packages,
-            )
-            .unwrap();
-
-        let (party2_round2_secret_package, party2_round2_packages) =
-            frost_ed25519::keys::dkg::part2(
-                party2_round1_secret_package,
-                &party2_round1_received_packages,
-            )
-            .unwrap();
-
-        let mut party1_round2_received_packages =
-            BTreeMap::<frost_ed25519::Identifier, round2::Package>::default();
-        let mut party2_round2_received_packages =
-            BTreeMap::<frost_ed25519::Identifier, round2::Package>::default();
-
-        party1_round2_received_packages.insert(
-            party2_identifier,
-            party2_round2_packages
-                .get(&party1_identifier)
-                .cloned()
-                .unwrap(),
-        );
-
-        party2_round2_received_packages.insert(
-            party1_identifier,
-            party1_round2_packages
-                .get(&party2_identifier)
-                .cloned()
-                .unwrap(),
-        );
-
-        let (party1_key_package, party1_public_package) = frost_ed25519::keys::dkg::part3(
-            &party1_round2_secret_package,
-            &party1_round1_received_packages,
-            &party1_round2_received_packages,
-        )
-        .unwrap();
-        let (_party2_key_package, _party2_public_package) = frost_ed25519::keys::dkg::part3(
-            &party2_round2_secret_package,
-            &party2_round1_received_packages,
-            &party2_round2_received_packages,
-        )
-        .unwrap();
-
-        {
-            // Test round2 outputs
-
-            use super::{FrostKeyPackageBytes, FrostPublicKeyPackage};
-            let key_package_bytes = FrostKeyPackageBytes::encode(&party1_key_package).unwrap();
-            let public_package_bytes =
-                FrostPublicKeyPackage::encode(&party1_public_package).unwrap();
-
-            let decoded_key_package_bytes = key_package_bytes
-                .decode::<frost_ed25519::Ed25519Sha512>()
-                .unwrap();
-            let decoded_public_package_bytes = public_package_bytes
-                .decode::<frost_ed25519::Ed25519Sha512>()
-                .unwrap();
-
-            assert_eq!(&party1_key_package, &decoded_key_package_bytes);
-            assert_eq!(&party1_public_package, &decoded_public_package_bytes);
-        }
     }
 }

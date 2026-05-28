@@ -98,6 +98,7 @@ impl FrostCredentialSeed {
         Cow::Borrowed(parsed)
     }
 
+    /// Useful when constructing the [String] format of this type
     pub fn seed_bytes(&self) -> &[u8] {
         // Should never panic because creating `Self` requires seed length 3 or greater
         &self.0[1..]

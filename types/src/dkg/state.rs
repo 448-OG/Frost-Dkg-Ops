@@ -53,4 +53,14 @@ impl FinalizedParticipants {
     pub fn is_valid_participant(&self, credential_seed: &FrostCredentialSeed) -> bool {
         self.0.iter().any(|stored| &stored.0 == credential_seed)
     }
+
+    pub fn get_asymmetric_verifying_key(
+        &self,
+        credential_seed: &FrostCredentialSeed,
+    ) -> Option<AsymmetricVerifyingKeyBytes> {
+        self.0
+            .iter()
+            .find(|stored| &stored.0 == credential_seed)
+            .map(|(_, vk)| *vk)
+    }
 }

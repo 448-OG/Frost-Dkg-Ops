@@ -1,12 +1,15 @@
 use bitcode::{Decode, Encode};
 
 use crate::FrostDkgState;
+use crate::FrostSigningEventState;
 use crate::TransmitType;
 
 pub type FrostOpsResult<T> = Result<T, FrostOpsError>;
 
 #[derive(Debug, PartialEq, thiserror::Error, Clone, Encode, Decode)]
 pub enum FrostOpsError {
+    #[error("Skip adding an event because it was never received as a signal in the first place")]
+    SkipFrostSigningEvent,
     #[error(
         "Unable to generate randomness from the OS. This error is fatal and computing should not continue until this is fixed!"
     )]
@@ -110,6 +113,46 @@ pub enum FrostOpsError {
     UnableToSignPayload,
     #[error("Unable to convert the bytes into the `AsymmetricVerifyingKey`")]
     InvalidAsymmetricVerifyingKeyBytes,
+    #[error("The number of signers must be 2 or more")]
+    InvalidNumOfSigners,
+    #[error(
+        "The number of signers is greater than the number of registered participants in finalized DKG state"
+    )]
+    SignersAreMoreThanMaximumFinalizedDkgParticipants,
+    #[error("{0}'s verifying key is corrupted. The storage is probably corrupted!")]
+    AsymmetricVerifyingKeyBytesNotFound(String),
+    #[error(
+        "The current state is `{current_state:?}` while expected state is `{expected_state:?}`"
+    )]
+    InvalidSigningState {
+        current_state: FrostSigningEventState,
+        expected_state: FrostSigningEventState,
+    },
+    #[error(
+        "The received round2 shares compiled_at timestamp must be later than the signal operation timestamps"
+    )]
+    InvalidRound2SigningTimestamp,
+    #[error("The threshold is `{threshold}` but the valid signers are only `{num_of_signers}`")]
+    InvalidThresholdEncounteredInRound2 { threshold: u16, num_of_signers: u16 },
+    #[error(
+        "Too many participants received. Protocol maximum is `{max}` but number of participants are `{current}`"
+    )]
+    TooManyParticipants { max: u16, current: usize },
+    #[error(
+        "Too many signers. Protocol maximum is `{max}` but number of participants are `{num_of_signers}`"
+    )]
+    TooManySigners { max: usize, num_of_signers: usize },
+    #[error(
+        "Insufficient signers. Protocol threshold is `{threshold}` but number of participants are `{num_of_signers}`"
+    )]
+    InsufficientSigners {
+        threshold: u16,
+        num_of_signers: usize,
+    },
+    #[error("FROST Signing nonces were required but none were found in storage")]
+    FrostSigningNoncesNotFound,
+    #[error("FROST Signing package was required but not found in storage")]
+    FrostSigningPackageNotFound,
 }
 
 #[derive(Debug, PartialEq, thiserror::Error, Clone, Encode, Decode)]

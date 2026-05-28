@@ -4,6 +4,7 @@ use bitcode::{Decode, Encode};
 use frost_core::{
     Ciphersuite, Identifier,
     keys::{SigningShare, VerifiableSecretSharingCommitment},
+    round2::SignatureShare,
 };
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -131,7 +132,7 @@ mod sanity_checks {
 
         let anonymous = FrostCredentialSeed::new_anonymous().unwrap();
         assert_eq!(anonymous.credential_type(), FrostCredentialType::Anonymous);
-        assert!(!anonymous.seed().as_bytes().is_empty());
+        assert!(!anonymous.seed().is_empty());
         let encoded = anonymous.encode();
         let decoded = FrostCredentialSeed::decode(&encoded).unwrap();
 

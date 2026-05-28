@@ -6,7 +6,7 @@ use hpke_rs::{
     Hpke, HpkePrivateKey as ClientDeviceSecretKey, HpkePublicKey as ClientDeviceVerifyingKey, Mode,
 };
 use hpke_rs_rust_crypto::HpkeRustCrypto;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use ed25519_dalek::{
     Signature as AsymmetricSignature, SigningKey as AsymmetricSigningKey,
@@ -270,7 +270,7 @@ impl fmt::Debug for EphemeralClientDeviceKeypair {
 // without incurring the cost of HPKE
 //
 
-#[derive(Clone, Zeroize, Encode, Decode)]
+#[derive(Clone, Zeroize, Encode, Decode, ZeroizeOnDrop)]
 pub struct AsymmetricKeypairBytes {
     signing_key: [u8; 32],
     pub verifying_key: AsymmetricVerifyingKeyBytes,

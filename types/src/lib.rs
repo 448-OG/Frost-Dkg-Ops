@@ -19,5 +19,8 @@ pub use signing::*;
 mod transmit;
 pub use transmit::*;
 
-mod envelopes;
-pub use envelopes::*;
+mod dkg_envelopes;
+pub use dkg_envelopes::*;
+
+mod signing_envelopes;
+pub use signing_envelopes::*;
