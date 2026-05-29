@@ -21,6 +21,19 @@ pub enum FrostOpsError {
     )]
     InvalidSldTld,
     #[error(
+        "The ciphersuite provided is not implemented or its `CONTEXT_STRING` has been modified"
+    )]
+    UnsupportedFrostCiphersuite,
+    #[error("The stored ciphersuite is unsupported")]
+    InvalidStoredFrostCiphersuite,
+    #[error(
+        "Invalid Frost Ciphersuite. The stored FROST credential has ciphersuite type of {stored} while the provided ciphersuite is {provided}"
+    )]
+    InvalidFrostCiphersuite {
+        stored: &'static str,
+        provided: &'static str,
+    },
+    #[error(
         "The username, email, random hex or identifier to use as the FROST Credential seed is invalid. It must be at least 3 characters long"
     )]
     InvalidFrostCredentialSeed,

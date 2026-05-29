@@ -38,6 +38,7 @@ impl FrostStorage {
 #[cfg(test)]
 mod sanity_checks {
     use frost_dkg_types::FrostCredentialSeed;
+    use frost_ed25519::Ed25519Sha512;
 
     use crate::test_utils::db_ops::frost_credentials_db_path;
 
@@ -51,7 +52,8 @@ mod sanity_checks {
             let org_domain = "example.com";
             let party1 = "foo@example.com";
 
-            let party1_credential = FrostCredentialSeed::new_with_email(party1).unwrap();
+            let party1_credential =
+                FrostCredentialSeed::new_with_email::<Ed25519Sha512>(party1).unwrap();
 
             let db_path = frost_credentials_db_path();
 

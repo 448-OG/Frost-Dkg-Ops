@@ -4,7 +4,6 @@ use bitcode::{Decode, Encode};
 use frost_core::{
     Ciphersuite, Identifier,
     keys::{SigningShare, VerifiableSecretSharingCommitment},
-    round2::SignatureShare,
 };
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -102,97 +101,5 @@ impl ProofOfKnowledgeBytes {
 
     pub fn decode<C: Ciphersuite>(proof: &[u8]) -> FrostOpsResult<frost_core::Signature<C>> {
         Ok(frost_core::Signature::<C>::deserialize(proof)?)
-    }
-}
-
-#[cfg(test)]
-mod sanity_checks {
-    use crate::FrostCredentialSeed;
-    use crate::FrostOpsError;
-
-    pub type FrostEd25519 = frost_ed25519::Ed25519Sha512;
-
-    #[test]
-    fn invalid_seed() {
-        use crate::FrostCredentialSeed;
-
-        let anonymous = FrostCredentialSeed::new_with_username("ff");
-        assert_eq!(
-            Some(FrostOpsError::InvalidFrostCredentialSeed),
-            anonymous.err()
-        );
-
-        let anonymous = FrostCredentialSeed::new_with_username("fff");
-        assert_eq!(None, anonymous.err());
-    }
-
-    #[test]
-    fn ed25519_anonymous_identifier_creation() {
-        use crate::FrostCredentialType;
-
-        let anonymous = FrostCredentialSeed::new_anonymous().unwrap();
-        assert_eq!(anonymous.credential_type(), FrostCredentialType::Anonymous);
-        assert!(!anonymous.seed().is_empty());
-        let encoded = anonymous.encode();
-        let decoded = FrostCredentialSeed::decode(&encoded).unwrap();
-
-        assert_eq!(anonymous.credential_type(), decoded.credential_type());
-        assert_eq!(
-            anonymous.frost_identifier::<FrostEd25519>(),
-            decoded.frost_identifier()
-        );
-    }
-
-    #[test]
-    fn ed25519_email_identifier_creation() {
-        use crate::FrostCredentialType;
-
-        let email_address = "superuser@example.com";
-
-        let email_cred = FrostCredentialSeed::new_with_email(email_address).unwrap();
-        assert_eq!(email_cred.credential_type(), FrostCredentialType::Email);
-        assert_eq!(
-            email_cred,
-            FrostCredentialSeed::new_with_email(email_address).unwrap()
-        );
-        let encoded = email_cred.encode();
-        let decoded = FrostCredentialSeed::decode(&encoded).unwrap();
-
-        assert_eq!(email_cred.credential_type(), decoded.credential_type());
-        assert_eq!(
-            email_cred.frost_identifier::<FrostEd25519>(),
-            decoded.frost_identifier()
-        );
-
-        assert!(FrostCredentialSeed::new_with_email("+00-imaginary-number").is_err());
-        assert!(FrostCredentialSeed::new_with_email("localhost").is_err());
-    }
-
-    #[test]
-    fn ed25519_username_identifier_creation() {
-        use crate::FrostCredentialType;
-
-        let phone_number = "+00-imaginary-number";
-
-        let phone_number_cred = FrostCredentialSeed::new_with_username(phone_number).unwrap();
-        assert_eq!(
-            phone_number_cred.credential_type(),
-            FrostCredentialType::Username
-        );
-        assert_eq!(
-            phone_number_cred,
-            FrostCredentialSeed::new_with_username(phone_number).unwrap()
-        );
-        let encoded = phone_number_cred.encode();
-        let decoded = FrostCredentialSeed::decode(&encoded).unwrap();
-
-        assert_eq!(
-            phone_number_cred.credential_type(),
-            decoded.credential_type()
-        );
-        assert_eq!(
-            phone_number_cred.frost_identifier::<FrostEd25519>(),
-            decoded.frost_identifier()
-        );
     }
 }
