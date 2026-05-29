@@ -29,6 +29,7 @@ mod sanity_checks {
         round1::{self, Round1PackageBytes},
         round2,
     };
+    use frost_ed25519::Ed25519Sha512;
 
     use crate::{DkgStateHandler, FrostAuthenticatedChannel, FrostDkgStorage};
 
@@ -74,14 +75,23 @@ mod sanity_checks {
                 let party3_id = "maa";
 
                 let party1_credential =
-                    FrostCredentialSeed::new_with_email_strict(party1_id, sld_tld.checked())
-                        .unwrap();
+                    FrostCredentialSeed::new_with_email_strict::<Ed25519Sha512>(
+                        party1_id,
+                        sld_tld.checked(),
+                    )
+                    .unwrap();
                 let party2_credential =
-                    FrostCredentialSeed::new_with_email_strict(party2_id, sld_tld.checked())
-                        .unwrap();
+                    FrostCredentialSeed::new_with_email_strict::<Ed25519Sha512>(
+                        party2_id,
+                        sld_tld.checked(),
+                    )
+                    .unwrap();
                 let party3_credential =
-                    FrostCredentialSeed::new_with_email_strict(party3_id, sld_tld.checked())
-                        .unwrap();
+                    FrostCredentialSeed::new_with_email_strict::<Ed25519Sha512>(
+                        party3_id,
+                        sld_tld.checked(),
+                    )
+                    .unwrap();
 
                 assert!(
                     party1_credential != party2_credential

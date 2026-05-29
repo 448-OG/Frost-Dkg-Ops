@@ -114,7 +114,7 @@ impl SignalAcknowledgement {
         self.notes
     }
 
-    /// ```
+    /// ```text
     /// TaiTimestamp.as_bytes || SLD-TLD hash.as_bytes() || signer.as_bytes() ||
     /// if accepted.is_some() encode value as bytes || event_hash.as_bytes() ||
     /// notes.iter().for_each(note.as_bytes)
