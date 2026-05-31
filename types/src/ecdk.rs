@@ -1,25 +1,31 @@
 use core::fmt;
 
 use bitcode::{Decode, Encode};
-use hpke_rs::hpke_types::{AeadAlgorithm, KdfAlgorithm, KemAlgorithm};
-use hpke_rs::{
-    Hpke, HpkePrivateKey as ClientDeviceSecretKey, HpkePublicKey as ClientDeviceVerifyingKey, Mode,
-};
-use hpke_rs_rust_crypto::HpkeRustCrypto;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use ed25519_dalek::{
-    Signature as AsymmetricSignature, SigningKey as AsymmetricSigningKey,
-    VerifyingKey as AsymmetricVerifyingKey,
+use crate::Blake3HashBytes;
+
+#[cfg(feature = "frost_ops")]
+use {
+    ed25519_dalek::{
+        Signature as AsymmetricSignature, SigningKey as AsymmetricSigningKey,
+        VerifyingKey as AsymmetricVerifyingKey,
+    },
+    hpke_rs::hpke_types::{AeadAlgorithm, KdfAlgorithm, KemAlgorithm},
+    hpke_rs::{
+        Hpke, HpkePrivateKey as ClientDeviceSecretKey, HpkePublicKey as ClientDeviceVerifyingKey,
+        Mode,
+    },
+    hpke_rs_rust_crypto::HpkeRustCrypto,
 };
 
-use crate::{
-    Blake3HashBytes, FrostMessageEnvelope, FrostOpsError, FrostOpsResult, RandomBytes, TransmitType,
-};
+#[cfg(feature = "frost_ops")]
+use crate::{FrostMessageEnvelope, FrostOpsError, FrostOpsResult, RandomBytes, TransmitType};
 
 #[derive(Clone, Hash, Default, PartialEq, Eq, PartialOrd, Ord, Zeroize, Encode, Decode)]
 pub struct EphemeralClientDeviceVerifyingKey(pub Vec<u8>);
 
+#[cfg(feature = "frost_ops")]
 impl EphemeralClientDeviceVerifyingKey {
     pub fn new(hpke_verifying_key: ClientDeviceVerifyingKey) -> Self {
         Self(hpke_verifying_key.as_slice().to_vec())
@@ -41,6 +47,7 @@ impl fmt::Debug for EphemeralClientDeviceVerifyingKey {
 #[derive(Clone, Hash, Default, PartialEq, Eq, PartialOrd, Ord, Zeroize, Encode, Decode)]
 pub struct HeEphemeralVerifyingKey(pub Vec<u8>);
 
+#[cfg(feature = "frost_ops")]
 impl HeEphemeralVerifyingKey {
     pub fn new(hpke_verifying_key: ClientDeviceVerifyingKey) -> Self {
         Self(hpke_verifying_key.as_slice().to_vec())
@@ -106,6 +113,7 @@ pub struct EphemeralClientDeviceKeypair {
     pub verifying_key: EphemeralClientDeviceVerifyingKey,
 }
 
+#[cfg(feature = "frost_ops")]
 impl EphemeralClientDeviceKeypair {
     pub const INFO: &str = "DHKEM25519-HKDFSHA256-CHACHA20POLY1305";
     pub const AAD: &str = "FROST-AEAD";
@@ -276,6 +284,7 @@ pub struct AsymmetricKeypairBytes {
     pub verifying_key: AsymmetricVerifyingKeyBytes,
 }
 
+#[cfg(feature = "frost_ops")]
 impl AsymmetricKeypairBytes {
     pub fn new() -> FrostOpsResult<Self> {
         let secret_key = RandomBytes::<32>::generate()?;
@@ -358,6 +367,7 @@ impl Eq for AsymmetricKeypairBytes {}
 #[derive(Clone, Copy, Hash, Default, PartialEq, Eq, PartialOrd, Ord, Zeroize, Encode, Decode)]
 pub struct AsymmetricVerifyingKeyBytes(pub [u8; 32]);
 
+#[cfg(feature = "frost_ops")]
 impl AsymmetricVerifyingKeyBytes {
     pub fn from_bytes(&self) -> FrostOpsResult<AsymmetricVerifyingKey> {
         AsymmetricVerifyingKey::from_bytes(&self.0)
@@ -376,6 +386,7 @@ impl fmt::Debug for AsymmetricVerifyingKeyBytes {
 #[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Zeroize, Encode, Decode)]
 pub struct AsymmetricSignatureBytes(pub [u8; 64]);
 
+#[cfg(feature = "frost_ops")]
 impl AsymmetricSignatureBytes {
     pub fn from_bytes(&self) -> AsymmetricSignature {
         AsymmetricSignature::from_bytes(&self.0)

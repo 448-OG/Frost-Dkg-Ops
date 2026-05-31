@@ -14,7 +14,7 @@ keywords.workspace = true
 [features]
 
 [dependencies]
-frost-dkg-types.workspace = true
+frost-dkg-types = { workspace = true, features = ["full"] }
 
 frost-core = { workspace = true, default-features = false, features = [
     "internals",

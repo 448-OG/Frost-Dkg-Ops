@@ -1,11 +1,14 @@
 use core::fmt;
-use std::str::FromStr;
 
 use bitcode::{Decode, Encode};
 use tai64::Tai64N;
 use zeroize::Zeroize;
 
+#[cfg(feature = "frost_ops")]
 use crate::{FrostOpsError, FrostOpsResult};
+
+#[cfg(feature = "frost_ops")]
+use std::str::FromStr;
 
 #[derive(Default, PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash, Encode, Decode)]
 pub struct Tai64NTimestamp([u8; 12]);
@@ -23,6 +26,7 @@ impl Tai64NTimestamp {
         Tai64N::UNIX_EPOCH
     }
 
+    #[cfg(feature = "frost_ops")]
     pub fn parse(&self) -> FrostOpsResult<Tai64N> {
         Ok(Tai64N::try_from(self.0)?)
     }
@@ -81,6 +85,7 @@ impl Blake3HashBytes {
         &self.0
     }
 
+    #[cfg(feature = "frost_ops")]
     pub fn from_slice(slice: &[u8]) -> FrostOpsResult<Self> {
         let to_array: [u8; 32] = slice
             .get(..32)
@@ -119,6 +124,7 @@ pub struct SldTld {
 }
 
 impl SldTld {
+    #[cfg(feature = "frost_ops")]
     pub fn new(sld_tld_str: &str) -> FrostOpsResult<Self> {
         let checked = fqdn::FQDN::from_str(sld_tld_str)
             .or(Err(FrostOpsError::InvalidSldTld))?
