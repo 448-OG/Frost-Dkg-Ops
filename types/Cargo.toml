@@ -12,7 +12,19 @@ categories.workspace = true
 keywords.workspace = true
 
 [features]
-default = ["client_storage", "email"]
+default = []
+full = ["client_storage", "email", "frost_ops"]
+frost_ops = [
+    "dep:frost-core",
+    "dep:rand_chacha",
+    "dep:getrandom",
+    "dep:rand",
+    "dep:hpke-rs",
+    "dep:hpke-rs-crypto",
+    "dep:hpke-rs-rust-crypto",
+    "dep:fqdn",
+    "dep:ed25519-dalek",
+]
 client_storage = ["dep:redb"]
 email = ["dep:email_address"]
 
@@ -20,27 +32,30 @@ email = ["dep:email_address"]
 frost-core = { workspace = true, default-features = false, features = [
     "internals",
     "serialization",
-] }
+], optional = true }
 redb = { workspace = true, optional = true }
 bitcode = { workspace = true, features = ["serde"] }
-zeroize = { workspace = true }
+zeroize = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true, default-features = false }
 faster-hex.workspace = true
-rand_chacha.workspace = true
-getrandom.workspace = true
+rand_chacha = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
 subtle.workspace = true
 email_address = { workspace = true, optional = true }
 tai64.workspace = true
-rand.workspace = true
+rand = { workspace = true, optional = true }
 blake3.workspace = true
-hpke-rs = { version = "=0.6.1", features = ["rustcrypto", "serialization"] }
-hpke-rs-crypto = "=0.6.1"
-hpke-rs-rust-crypto = "=0.6.1"
-fqdn.workspace = true
+hpke-rs = { version = "=0.6.1", features = [
+    "rustcrypto",
+    "serialization",
+], optional = true }
+hpke-rs-crypto = { version = "=0.6.1", optional = true }
+hpke-rs-rust-crypto = { version = "=0.6.1", optional = true }
+fqdn = { workspace = true, optional = true }
 humantime.workspace = true
 bs58.workspace = true
 file-format.workspace = true
-ed25519-dalek.workspace = true
+ed25519-dalek = { workspace = true, optional = true }
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 zeroize = { workspace = true, features = ["aarch64", "simd"] }

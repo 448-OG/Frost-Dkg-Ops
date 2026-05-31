@@ -14,7 +14,7 @@ keywords.workspace = true
 [features]
 
 [dependencies]
-frost-dkg-types.workspace = true
+frost-dkg-types = { workspace = true, features = ["full"] }
 redb.workspace = true
 camino.workspace = true
 blocking.workspace = true
