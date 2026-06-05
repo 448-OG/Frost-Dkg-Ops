@@ -11,6 +11,25 @@ use crate::{FrostOpsError, FrostOpsResult};
 use std::str::FromStr;
 
 #[derive(Default, PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash, Encode, Decode)]
+pub struct Byte32Array([u8; 32]);
+
+impl Byte32Array {
+    pub fn ct_eq(&self, other: &Byte32Array) -> bool {
+        use subtle::ConstantTimeEq;
+
+        self.0.ct_eq(&other.0).into()
+    }
+}
+
+impl fmt::Debug for Byte32Array {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Byte32Array")
+            .field(&faster_hex::hex_string_upper(&self.0))
+            .finish()
+    }
+}
+
+#[derive(Default, PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash, Encode, Decode)]
 pub struct Tai64NTimestamp([u8; 12]);
 
 impl Tai64NTimestamp {
@@ -117,15 +136,16 @@ impl Zeroize for Blake3HashBytes {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize)]
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode)]
 pub struct SldTld {
     unchecked: String,
     checked: String,
+    activity_id: Byte32Array,
 }
 
 impl SldTld {
     #[cfg(feature = "frost_ops")]
-    pub fn new(sld_tld_str: &str) -> FrostOpsResult<Self> {
+    pub fn new(sld_tld_str: &str, activity_id: Byte32Array) -> FrostOpsResult<Self> {
         let checked = fqdn::FQDN::from_str(sld_tld_str)
             .or(Err(FrostOpsError::InvalidSldTld))?
             .to_string();
@@ -140,6 +160,7 @@ impl SldTld {
         Ok(Self {
             unchecked: sld_tld_str.to_string(),
             checked,
+            activity_id,
         })
     }
 
@@ -151,11 +172,15 @@ impl SldTld {
         self.checked.as_str()
     }
 
+    pub fn activity_id(&self) -> Byte32Array {
+        self.activity_id
+    }
+
     pub fn to_storage_key(&self) -> Blake3HashBytes {
         let mut hasher = blake3::Hasher::new();
         hasher
-            .update(self.unchecked.as_bytes())
-            .update(self.checked.as_bytes());
+            .update(self.checked.as_bytes())
+            .update(&self.activity_id.0);
 
         Blake3HashBytes::pre_hashed(hasher.finalize())
     }

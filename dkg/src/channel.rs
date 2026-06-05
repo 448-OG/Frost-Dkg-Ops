@@ -5,8 +5,6 @@ use frost_dkg_types::{
 };
 
 pub trait FrostAuthenticatedChannel: Sized {
-    fn init() -> impl Future<Output = FrostOpsResult<Self>>;
-
     fn is_active_domain(&self, sld_tld: &SldTld) -> impl Future<Output = FrostOpsResult<bool>>;
 
     /// Registers user querying the endpoint while also querying
