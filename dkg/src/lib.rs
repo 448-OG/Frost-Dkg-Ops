@@ -13,18 +13,18 @@ pub use signing::*;
 #[cfg(test)]
 mod sanity_checks {
     use std::{
-        collections::{BTreeMap, HashMap, HashSet, VecDeque},
+        collections::{BTreeMap, HashMap, HashSet},
         sync::LazyLock,
     };
 
     use async_dup::Arc;
     use async_lock::{Mutex, RwLock};
     use frost_dkg_types::{
-        AsymmetricKeypairBytes, AsymmetricVerifyingKeyBytes, Blake3HashBytes,
+        AsymmetricKeypairBytes, AsymmetricVerifyingKeyBytes, Blake3HashBytes, Byte32Array,
         EphemeralClientDeviceKeypair, FinalizedParticipants, FrostCredentialSeed, FrostDkgState,
         FrostMessageEnvelope, FrostOpsError, FrostOpsResult, FrostRelayMessageEnvelope,
         FrostRoundPackage, FrostSigningEventInfo, FrostSigningEventKey, MinMaxParticipants,
-        Round1Participants, SldTld, Tai64NTimestamp,
+        Round1Participants, SldTld,
         finalized::{FrostKeyPackageBytes, FrostPublicKeyPackage},
         round1::{self, Round1PackageBytes},
         round2,
@@ -34,13 +34,10 @@ mod sanity_checks {
     use crate::{DkgStateHandler, FrostAuthenticatedChannel, FrostDkgStorage};
 
     type FrostEd25519DkgHandler =
-        DkgStateHandler<frost_ed25519::Ed25519Sha512, Arc<RwLock<ClientStorage>>, RelayMemNetwork>;
+        DkgStateHandler<frost_ed25519::Ed25519Sha512, Arc<RwLock<ClientStorage>>, ClientMemNetwork>;
 
-    static REMOTE_SERVER: LazyLock<Mutex<RemoteServer>> = LazyLock::new(|| {
-        let sld_tld = SldTld::new("example.com").unwrap();
-
-        Mutex::new(RemoteServer::new(sld_tld.checked()))
-    });
+    static REMOTE_SERVER: LazyLock<Mutex<RemoteServer>> =
+        LazyLock::new(|| Mutex::new(RemoteServer::new("example.com")));
 
     #[test]
     fn module() {
@@ -50,17 +47,47 @@ mod sanity_checks {
                 .await
                 .set_min_max(MinMaxParticipants { min: 2, max: 3 });
 
-            let party1 = FrostEd25519DkgHandler::init().await.unwrap();
-            let party2 = FrostEd25519DkgHandler::init().await.unwrap();
-            let party3 = FrostEd25519DkgHandler::init().await.unwrap();
+            let party1_storage = ClientStorage::init().await.unwrap();
+            let party2_storage = ClientStorage::init().await.unwrap();
+            let party3_storage = ClientStorage::init().await.unwrap();
 
-            let sld_tld = SldTld::new(&REMOTE_SERVER.lock().await.organization).unwrap();
+            let party1_channel = ClientMemNetwork::init().await.unwrap();
+            let party2_channel = ClientMemNetwork::init().await.unwrap();
+            let party3_channel = ClientMemNetwork::init().await.unwrap();
+
+            let party1 = FrostEd25519DkgHandler::init(
+                frost_ed25519::Ed25519Sha512,
+                party1_storage,
+                party1_channel,
+            )
+            .await
+            .unwrap();
+            let party2 = FrostEd25519DkgHandler::init(
+                frost_ed25519::Ed25519Sha512,
+                party2_storage,
+                party2_channel,
+            )
+            .await
+            .unwrap();
+            let party3 = FrostEd25519DkgHandler::init(
+                frost_ed25519::Ed25519Sha512,
+                party3_storage,
+                party3_channel,
+            )
+            .await
+            .unwrap();
+
+            let sld_tld = SldTld::new(
+                &REMOTE_SERVER.lock().await.organization,
+                Byte32Array::default(),
+            )
+            .unwrap();
 
             {
                 // Init SLD-TLD
-                party1.set_new_sld_tld(sld_tld.unchecked()).await.unwrap();
-                party2.set_new_sld_tld(sld_tld.unchecked()).await.unwrap();
-                party3.set_new_sld_tld(sld_tld.unchecked()).await.unwrap();
+                party1.set_new_sld_tld(sld_tld.clone()).await.unwrap();
+                party2.set_new_sld_tld(sld_tld.clone()).await.unwrap();
+                party3.set_new_sld_tld(sld_tld.clone()).await.unwrap();
             }
 
             let mut state = party1.get_state(&sld_tld).await.unwrap();
@@ -339,9 +366,9 @@ mod sanity_checks {
         events: BTreeMap<[u8; 44], FrostSigningEventInfo>,
     }
 
-    impl FrostDkgStorage for Arc<RwLock<ClientStorage>> {
+    impl ClientStorage {
         // TODO test when state already initialized
-        async fn init() -> FrostOpsResult<Self> {
+        async fn init() -> FrostOpsResult<Arc<RwLock<Self>>> {
             let init = ClientStorage {
                 participant_info: HashMap::default(),
                 received_round1_packages: BTreeMap::default(),
@@ -351,7 +378,9 @@ mod sanity_checks {
 
             Ok(Arc::new(RwLock::new(init)))
         }
+    }
 
+    impl FrostDkgStorage for Arc<RwLock<ClientStorage>> {
         async fn set_sld_tld(&self, sld_tld: frost_dkg_types::SldTld) -> FrostOpsResult<()> {
             self.write()
                 .await
@@ -1131,13 +1160,17 @@ mod sanity_checks {
         }
     }
 
-    struct RelayMemNetwork(SldTld);
+    struct ClientMemNetwork(SldTld);
 
-    impl FrostAuthenticatedChannel for RelayMemNetwork {
+    impl ClientMemNetwork {
         async fn init() -> FrostOpsResult<Self> {
-            Ok(Self(SldTld::new("example.com").unwrap()))
+            Ok(Self(
+                SldTld::new("example.com", Byte32Array::default()).unwrap(),
+            ))
         }
+    }
 
+    impl FrostAuthenticatedChannel for ClientMemNetwork {
         async fn fetch_min_max_participants(
             &self,
             envelope: FrostRelayMessageEnvelope<FrostCredentialSeed>,

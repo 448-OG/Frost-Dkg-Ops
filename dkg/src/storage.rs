@@ -9,8 +9,6 @@ use frost_dkg_types::{
 };
 
 pub trait FrostDkgStorage: Sized {
-    fn init() -> impl Future<Output = FrostOpsResult<Self>>;
-
     fn set_sld_tld(&self, sld_tld: SldTld) -> impl Future<Output = FrostOpsResult<()>>;
 
     fn get_all_sld_tlds(&self) -> impl Future<Output = FrostOpsResult<Vec<SldTld>>>;

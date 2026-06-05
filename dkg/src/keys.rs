@@ -1,14 +1,12 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    marker::PhantomData,
-};
+use std::collections::{BTreeMap, HashMap};
 
 use frost_core::Ciphersuite;
 
 use frost_dkg_types::{
-    AsymmetricKeypairBytes, AsymmetricVerifyingKeyBytes, EphemeralClientDeviceVerifyingKey,
-    FinalizedParticipants, FrostCredentialSeed, FrostDkgState, FrostMessageEnvelope, FrostOpsError,
-    FrostOpsResult, FrostRoundPackage, SldTld, Tai64NTimestamp, TransmitType,
+    AsymmetricKeypairBytes, AsymmetricVerifyingKeyBytes, Byte32Array,
+    EphemeralClientDeviceVerifyingKey, FinalizedParticipants, FrostCredentialSeed, FrostDkgState,
+    FrostMessageEnvelope, FrostOpsError, FrostOpsResult, FrostRoundPackage, SldTld,
+    Tai64NTimestamp, TransmitType,
     finalized::{FrostKeyPackageBytes, FrostPublicKeyPackage},
     round1, round2,
 };
@@ -19,18 +17,15 @@ use crate::{FrostAuthenticatedChannel, FrostDkgStorage};
 pub struct DkgStateHandler<C: Ciphersuite, KV: FrostDkgStorage, N: FrostAuthenticatedChannel> {
     storage: KV,
     channel: N,
-    foo: PhantomData<C>,
+    ciphersuite: C,
 }
 
 impl<C: Ciphersuite, KV: FrostDkgStorage, N: FrostAuthenticatedChannel> DkgStateHandler<C, KV, N> {
-    pub async fn init() -> FrostOpsResult<Self> {
-        let storage = KV::init().await?;
-        let channel = N::init().await?;
-
+    pub async fn init(ciphersuite: C, storage: KV, channel: N) -> FrostOpsResult<Self> {
         Ok(Self {
-            storage,
             channel,
-            foo: PhantomData,
+            ciphersuite,
+            storage,
         })
     }
 
@@ -42,16 +37,18 @@ impl<C: Ciphersuite, KV: FrostDkgStorage, N: FrostAuthenticatedChannel> DkgState
         &self.channel
     }
 
+    pub fn ciphersuite(&self) -> C {
+        self.ciphersuite
+    }
+
     pub async fn get_state(&self, sld_tld: &SldTld) -> FrostOpsResult<FrostDkgState> {
         self.storage.get_state(sld_tld).await
     }
 
-    pub async fn set_new_sld_tld(&self, sld_tld: &str) -> FrostOpsResult<()> {
-        let domain = SldTld::new(sld_tld)?;
+    pub async fn set_new_sld_tld(&self, sld_tld: SldTld) -> FrostOpsResult<()> {
+        self.channel.is_active_domain(&sld_tld).await?;
 
-        self.channel.is_active_domain(&domain).await?;
-
-        self.storage.set_sld_tld(domain).await?;
+        self.storage.set_sld_tld(sld_tld).await?;
 
         Ok(())
     }
