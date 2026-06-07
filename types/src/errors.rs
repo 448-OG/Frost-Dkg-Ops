@@ -4,6 +4,10 @@ use crate::FrostDkgState;
 use crate::FrostSigningEventState;
 use crate::TransmitType;
 
+pub trait FrostOpsErrorTrait: core::error::Error {
+    fn invalid_client_state() -> Self;
+}
+
 pub type FrostOpsResult<T> = Result<T, FrostOpsError>;
 
 #[derive(Debug, PartialEq, thiserror::Error, Clone, Encode, Decode)]

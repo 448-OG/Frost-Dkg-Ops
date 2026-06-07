@@ -1,19 +1,23 @@
 use bitcode::{Decode, Encode};
-use frost_core::{
-    Ciphersuite,
-    keys::{VerifiableSecretSharingCommitment, dkg::round1},
-};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{
-    FrostCommitmentBytes, FrostOpsError, FrostOpsResult, FrostProtocolError, ProofOfKnowledgeBytes,
+#[cfg(feature = "frost_ops")]
+use {
+    crate::{FrostOpsError, FrostOpsResult, FrostProtocolError},
+    frost_core::{
+        Ciphersuite,
+        keys::{VerifiableSecretSharingCommitment, dkg::round1},
+    },
 };
+
+use crate::{FrostCommitmentBytes, ProofOfKnowledgeBytes};
 
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash, ZeroizeOnDrop,
 )]
 pub struct Round1SecretBytes(Vec<u8>);
 
+#[cfg(feature = "frost_ops")]
 impl Round1SecretBytes {
     pub fn new<C: Ciphersuite>(
         mut round1_secret: round1::SecretPackage<C>,
@@ -47,6 +51,7 @@ pub struct Round1PackageBytes {
     commitment: FrostCommitmentBytes,
 }
 
+#[cfg(feature = "frost_ops")]
 impl Round1PackageBytes {
     pub fn parse<C: Ciphersuite>(
         round1_public_package: &round1::Package<C>,
@@ -81,6 +86,7 @@ impl Round1PackageBytes {
     }
 }
 
+#[cfg(feature = "frost_ops")]
 #[cfg(test)]
 mod sanity_checks {
     #[test]
