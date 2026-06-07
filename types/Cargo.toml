@@ -15,7 +15,7 @@ keywords.workspace = true
 default = []
 full = ["client_storage", "email", "frost_ops"]
 frost_ops = [
-    "dep:frost-core",
+    "frost-core",
     "dep:rand_chacha",
     "dep:getrandom",
     "dep:rand",

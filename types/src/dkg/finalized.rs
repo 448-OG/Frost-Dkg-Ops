@@ -1,13 +1,19 @@
 use core::fmt;
 
 use bitcode::{Decode, Encode};
-use frost_core::{
-    Ciphersuite, VerifyingKey,
-    keys::{KeyPackage, PublicKeyPackage, VerifyingShare},
+
+#[cfg(feature = "frost_ops")]
+use {
+    crate::FrostOpsResult,
+    frost_core::{
+        Ciphersuite, VerifyingKey,
+        keys::{KeyPackage, PublicKeyPackage, VerifyingShare},
+    },
 };
+
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{FrostIdentifierBytes, FrostOpsResult, FrostSigningShareBytes};
+use crate::{FrostIdentifierBytes, FrostSigningShareBytes};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrostKeyPackageBytes {
@@ -18,6 +24,7 @@ pub struct FrostKeyPackageBytes {
     minimum_signers: u16,
 }
 
+#[cfg(feature = "frost_ops")]
 impl FrostKeyPackageBytes {
     pub fn encode<C: Ciphersuite>(key_package: &KeyPackage<C>) -> FrostOpsResult<Self> {
         let identifier_bytes = FrostIdentifierBytes::encode(key_package.identifier());
@@ -59,6 +66,7 @@ impl FrostKeyPackageBytes {
 #[derive(Clone, Encode, Decode, Zeroize, ZeroizeOnDrop)]
 pub struct FrostVerifyingShareBytes(Vec<u8>);
 
+#[cfg(feature = "frost_ops")]
 impl FrostVerifyingShareBytes {
     pub fn encode<C: Ciphersuite>(verifying_share: &VerifyingShare<C>) -> FrostOpsResult<Self> {
         Ok(Self(verifying_share.serialize()?))
@@ -90,6 +98,7 @@ impl fmt::Debug for FrostVerifyingShareBytes {
 #[derive(Clone, Encode, Decode, Zeroize, ZeroizeOnDrop)]
 pub struct FrostVerifyingKeyBytes(Vec<u8>);
 
+#[cfg(feature = "frost_ops")]
 impl FrostVerifyingKeyBytes {
     pub fn encode<C: Ciphersuite>(verifying_key: &VerifyingKey<C>) -> FrostOpsResult<Self> {
         Ok(Self(verifying_key.serialize()?))
@@ -121,6 +130,7 @@ impl fmt::Debug for FrostVerifyingKeyBytes {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop)]
 pub struct FrostPublicKeyPackage(Vec<u8>);
 
+#[cfg(feature = "frost_ops")]
 impl FrostPublicKeyPackage {
     pub fn encode<C: Ciphersuite>(public_package: &PublicKeyPackage<C>) -> FrostOpsResult<Self> {
         Ok(Self(public_package.serialize()?))

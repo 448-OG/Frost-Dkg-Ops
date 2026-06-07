@@ -1,14 +1,20 @@
 use bitcode::{Decode, Encode};
-use frost_core::{Ciphersuite, keys::dkg::round2};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{AsymmetricVerifyingKeyBytes, FrostOpsError, FrostOpsResult, FrostProtocolError};
+#[cfg(feature = "frost_ops")]
+use {
+    crate::{FrostOpsError, FrostOpsResult, FrostProtocolError},
+    frost_core::{Ciphersuite, keys::dkg::round2},
+};
+
+use crate::AsymmetricVerifyingKeyBytes;
 
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash, ZeroizeOnDrop,
 )]
 pub struct Round2SecretBytes(Vec<u8>);
 
+#[cfg(feature = "frost_ops")]
 impl Round2SecretBytes {
     pub fn serialize<C: Ciphersuite>(
         round2_secret: &round2::SecretPackage<C>,
@@ -31,6 +37,7 @@ pub struct Round2PackageBytes {
     pub avk: AsymmetricVerifyingKeyBytes,
 }
 
+#[cfg(feature = "frost_ops")]
 impl Round2PackageBytes {
     pub fn parse<C: Ciphersuite>(
         package: &frost_core::keys::dkg::round2::Package<C>,

@@ -1,14 +1,17 @@
 use core::fmt;
-use std::borrow::Cow;
 
 use bitcode::{Decode, Encode};
-use frost_core::Ciphersuite;
+
 use zeroize::{Zeroize, ZeroizeOnDrop};
+#[cfg(feature = "frost_ops")]
+use {
+    crate::{FrostOpsError, FrostOpsResult, RandomBytes},
+    frost_core::Ciphersuite,
+    std::borrow::Cow,
+};
 
 #[cfg(feature = "email")]
 use email_address::{EmailAddress, Options as EmailOptions};
-
-use crate::{FrostOpsError, FrostOpsResult, RandomBytes};
 
 /// The `seed` can reconstruct the frost_identifier and is useful in keeping
 /// the bytes sent over a network small instead of sending the FROST Identifier
@@ -16,6 +19,7 @@ use crate::{FrostOpsError, FrostOpsResult, RandomBytes};
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop)]
 pub struct FrostCredentialSeed(Vec<u8>);
 
+#[cfg(feature = "frost_ops")]
 impl FrostCredentialSeed {
     pub fn new<C: Ciphersuite>(
         credential_type: FrostCredentialType,
@@ -177,6 +181,7 @@ impl Zeroize for FrostCredentialType {
     }
 }
 
+#[cfg(feature = "frost_ops")]
 impl From<FrostCredentialType> for u8 {
     fn from(identifier_type: FrostCredentialType) -> Self {
         match identifier_type {
@@ -253,6 +258,7 @@ impl From<u8> for FrostCiphersuite {
     }
 }
 
+#[cfg(feature = "frost_ops")]
 #[cfg(test)]
 mod sanity_checks {
     use frost_core::Ciphersuite;
