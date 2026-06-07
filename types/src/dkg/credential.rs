@@ -78,7 +78,7 @@ impl PartialEq for FrostSigningShareBytes {
 
 impl Eq for FrostSigningShareBytes {}
 
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash)]
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Hash)]
 pub struct FrostCommitmentBytes(pub(crate) Vec<Vec<u8>>);
 
 #[cfg(feature = "frost_ops")]
@@ -95,6 +95,16 @@ impl FrostCommitmentBytes {
         Ok(VerifiableSecretSharingCommitment::<C>::deserialize(
             commitments_bytes.0,
         )?)
+    }
+}
+
+impl Zeroize for FrostCommitmentBytes {
+    fn zeroize(&mut self) {
+        for value in self.0.iter_mut() {
+            value.zeroize();
+        }
+
+        self.zeroize();
     }
 }
 
