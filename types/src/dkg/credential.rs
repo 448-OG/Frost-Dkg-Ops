@@ -1,19 +1,23 @@
 use core::fmt;
 
 use bitcode::{Decode, Encode};
-use frost_core::{
-    Ciphersuite, Identifier,
-    keys::{SigningShare, VerifiableSecretSharingCommitment},
-};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::{FrostCredentialSeed, FrostOpsResult};
+#[cfg(feature = "frost_ops")]
+use {
+    crate::{FrostCredentialSeed, FrostOpsResult},
+    frost_core::{
+        Ciphersuite, Identifier,
+        keys::{SigningShare, VerifiableSecretSharingCommitment},
+    },
+};
 
 #[derive(
     Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Hash, Zeroize, ZeroizeOnDrop,
 )]
 pub struct FrostIdentifierBytes(Vec<u8>);
 
+#[cfg(feature = "frost_ops")]
 impl FrostIdentifierBytes {
     pub fn encode<C: Ciphersuite>(identifier: &Identifier<C>) -> Self {
         Self(identifier.serialize())
@@ -32,6 +36,7 @@ impl fmt::Debug for FrostIdentifierBytes {
     }
 }
 
+#[cfg(feature = "frost_ops")]
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Encode, Decode, Zeroize, ZeroizeOnDrop,
 )]
@@ -44,6 +49,7 @@ pub struct FrostCredentialBytes {
 #[derive(Default, Clone, Encode, Decode, Zeroize)]
 pub struct FrostSigningShareBytes(Vec<u8>);
 
+#[cfg(feature = "frost_ops")]
 impl FrostSigningShareBytes {
     pub fn encode<C: Ciphersuite>(signing_share: &SigningShare<C>) -> Self {
         Self(signing_share.serialize())
@@ -75,6 +81,7 @@ impl Eq for FrostSigningShareBytes {}
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash)]
 pub struct FrostCommitmentBytes(pub(crate) Vec<Vec<u8>>);
 
+#[cfg(feature = "frost_ops")]
 impl FrostCommitmentBytes {
     pub fn encode<C: Ciphersuite>(
         commitments: &VerifiableSecretSharingCommitment<C>,
@@ -94,6 +101,7 @@ impl FrostCommitmentBytes {
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash)]
 pub struct ProofOfKnowledgeBytes(pub(crate) Vec<u8>);
 
+#[cfg(feature = "frost_ops")]
 impl ProofOfKnowledgeBytes {
     pub fn encode<C: Ciphersuite>(proof: &frost_core::Signature<C>) -> FrostOpsResult<Self> {
         Ok(Self(proof.serialize()?))

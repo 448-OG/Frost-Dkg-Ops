@@ -1,6 +1,4 @@
-#[cfg(feature = "frost_ops")]
 mod dkg;
-#[cfg(feature = "frost_ops")]
 pub use dkg::*;
 
 mod ecdk;
