@@ -44,11 +44,22 @@ impl Round1SecretBytes {
 }
 
 #[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Zeroize, Hash, ZeroizeOnDrop,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Clone,
+    Encode,
+    Decode,
+    Zeroize,
+    Hash,
+    ZeroizeOnDrop,
 )]
 pub struct Round1PackageBytes {
-    proof_of_knowledge: ProofOfKnowledgeBytes,
-    commitment: FrostCommitmentBytes,
+    pub proof_of_knowledge: ProofOfKnowledgeBytes,
+    pub commitment: FrostCommitmentBytes,
 }
 
 #[cfg(feature = "frost_ops")]
