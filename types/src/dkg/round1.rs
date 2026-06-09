@@ -43,20 +43,7 @@ impl Round1SecretBytes {
     }
 }
 
-#[derive(
-    Debug,
-    Default,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Clone,
-    Encode,
-    Decode,
-    Zeroize,
-    Hash,
-    ZeroizeOnDrop,
-)]
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Hash)]
 pub struct Round1PackageBytes {
     pub proof_of_knowledge: ProofOfKnowledgeBytes,
     pub commitment: FrostCommitmentBytes,
