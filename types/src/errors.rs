@@ -12,6 +12,8 @@ pub type FrostOpsResult<T> = Result<T, FrostOpsError>;
 
 #[derive(Debug, PartialEq, thiserror::Error, Clone, Encode, Decode)]
 pub enum FrostOpsError {
+    #[error("The tai64 timestamp duration is invalid from unix epoch")]
+    InvalidTai64nTimestampDuration,
     #[error("Skip adding an event because it was never received as a signal in the first place")]
     SkipFrostSigningEvent,
     #[error(

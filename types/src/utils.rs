@@ -62,10 +62,14 @@ impl Tai64NTimestamp {
         self.0
     }
 
-    pub fn format_rfc_2822_long(tai64n_time: Tai64N, offset: i32) -> String {
+    pub fn to_rfc_2822_long(&self, offset: i32) -> FrostOpsResult<String> {
+        Self::format_rfc_2822_long(self.parse()?, offset)
+    }
+
+    pub fn format_rfc_2822_long(tai64n_time: Tai64N, offset: i32) -> FrostOpsResult<String> {
         let duration = tai64n_time
             .duration_since(&tai64::Tai64N::UNIX_EPOCH)
-            .unwrap_or_default();
+            .or(Err(FrostOpsError::InvalidTai64nTimestampDuration))?;
         let timestamp = hifitime::Epoch::from_unix_seconds(duration.as_secs_f64());
         let tz = hifitime::Duration::from_seconds(offset as f64);
         let fmt = hifitime::efmt::Formatter::with_timezone(
@@ -74,7 +78,7 @@ impl Tai64NTimestamp {
             hifitime::efmt::consts::RFC2822_LONG,
         );
 
-        format!("{fmt}")
+        Ok(format!("{fmt}"))
     }
 }
 
