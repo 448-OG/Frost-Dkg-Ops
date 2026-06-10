@@ -61,6 +61,21 @@ impl Tai64NTimestamp {
     pub fn take(self) -> [u8; 12] {
         self.0
     }
+
+    pub fn format_rfc_2822_long(tai64n_time: Tai64N, offset: i32) -> String {
+        let duration = tai64n_time
+            .duration_since(&tai64::Tai64N::UNIX_EPOCH)
+            .unwrap_or_default();
+        let timestamp = hifitime::Epoch::from_unix_seconds(duration.as_secs_f64());
+        let tz = hifitime::Duration::from_seconds(offset as f64);
+        let fmt = hifitime::efmt::Formatter::with_timezone(
+            timestamp,
+            tz,
+            hifitime::efmt::consts::RFC2822_LONG,
+        );
+
+        format!("{fmt}")
+    }
 }
 
 impl fmt::Debug for Tai64NTimestamp {

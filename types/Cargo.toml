@@ -43,6 +43,7 @@ getrandom = { workspace = true, optional = true }
 subtle.workspace = true
 email_address = { workspace = true, optional = true }
 tai64.workspace = true
+hifitime = { version = "4.3.0", default-features = false }
 rand = { workspace = true, optional = true }
 blake3.workspace = true
 hpke-rs = { version = "=0.6.1", features = [
