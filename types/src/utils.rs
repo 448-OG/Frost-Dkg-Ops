@@ -45,8 +45,7 @@ impl Tai64NTimestamp {
         Tai64N::UNIX_EPOCH
     }
 
-    #[cfg(feature = "frost_ops")]
-    pub fn parse(&self) -> FrostOpsResult<Tai64N> {
+    pub fn parse(&self) -> Result<Tai64N, TaiTimestampError> {
         Ok(Tai64N::try_from(self.0)?)
     }
 
@@ -62,14 +61,17 @@ impl Tai64NTimestamp {
         self.0
     }
 
-    pub fn to_rfc_2822_long(&self, offset: i32) -> FrostOpsResult<String> {
+    pub fn to_rfc_2822_long(&self, offset: i32) -> Result<String, TaiTimestampError> {
         Self::format_rfc_2822_long(self.parse()?, offset)
     }
 
-    pub fn format_rfc_2822_long(tai64n_time: Tai64N, offset: i32) -> FrostOpsResult<String> {
+    pub fn format_rfc_2822_long(
+        tai64n_time: Tai64N,
+        offset: i32,
+    ) -> Result<String, TaiTimestampError> {
         let duration = tai64n_time
             .duration_since(&tai64::Tai64N::UNIX_EPOCH)
-            .or(Err(FrostOpsError::InvalidTai64nTimestampDuration))?;
+            .or(Err(TaiTimestampError::InvalidTai64nTimestampDuration))?;
         let timestamp = hifitime::Epoch::from_unix_seconds(duration.as_secs_f64());
         let tz = hifitime::Duration::from_seconds(offset as f64);
         let fmt = hifitime::efmt::Formatter::with_timezone(
@@ -79,6 +81,20 @@ impl Tai64NTimestamp {
         );
 
         Ok(format!("{fmt}"))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Encode, Decode, thiserror::Error)]
+pub enum TaiTimestampError {
+    #[error("Invalid Tai64N timestamp bytes")]
+    InvalidTai64nBytes,
+    #[error("The tai64 timestamp duration is invalid from unix epoch")]
+    InvalidTai64nTimestampDuration,
+}
+
+impl From<tai64::Error> for TaiTimestampError {
+    fn from(_: tai64::Error) -> Self {
+        Self::InvalidTai64nBytes
     }
 }
 

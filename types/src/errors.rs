@@ -2,6 +2,7 @@ use bitcode::{Decode, Encode};
 
 use crate::FrostDkgState;
 use crate::FrostSigningEventState;
+use crate::TaiTimestampError;
 use crate::TransmitType;
 
 pub trait FrostOpsErrorTrait: core::error::Error {
@@ -12,8 +13,6 @@ pub type FrostOpsResult<T> = Result<T, FrostOpsError>;
 
 #[derive(Debug, PartialEq, thiserror::Error, Clone, Encode, Decode)]
 pub enum FrostOpsError {
-    #[error("The tai64 timestamp duration is invalid from unix epoch")]
-    InvalidTai64nTimestampDuration,
     #[error("Skip adding an event because it was never received as a signal in the first place")]
     SkipFrostSigningEvent,
     #[error(
@@ -81,7 +80,7 @@ pub enum FrostOpsError {
     #[error("The ephemeral device HPKE ephemeral verifying key is missing")]
     MissingEphemeralHeVerifyingKey,
     #[error("Invalid Tai64N bytes")]
-    Tai64NTimestampBytes,
+    Tai64N(TaiTimestampError),
     #[error(
         "The relay transmitted a payload that is not round1 DKG yet only Round1 DKG payloads are accepted by the query"
     )]
@@ -243,9 +242,9 @@ impl From<hpke_rs::HpkeError> for FrostOpsError {
     }
 }
 
-impl From<tai64::Error> for FrostOpsError {
-    fn from(_: tai64::Error) -> Self {
-        Self::Tai64NTimestampBytes
+impl From<TaiTimestampError> for FrostOpsError {
+    fn from(error: TaiTimestampError) -> Self {
+        Self::Tai64N(error)
     }
 }
 
